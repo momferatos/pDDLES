@@ -9,6 +9,7 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 
 class TurbDataset(Dataset):
     """Dataset representing a shapshot from the time evolution of the passive
@@ -50,10 +51,11 @@ class TurbDataset(Dataset):
             # time instant
             time = float(np.array(h5file['time'])[0])
             
-        y = torch.from_numpy(y)
+        y = torch.from_numpy(y).transpose(0, -1)
         # truncate to Patterson-Orszag dealiasing limit
         y = self.truncate(y) 
-        y = y.unsqueeze(0) # Add extra tensor dimension required by PyTorch
+        if self.params["hdf5_key"] == 'scl':
+            y = y.unsqueeze(0) # Add extra tensor dimension required by PyTorch
                 
         return y
 
@@ -277,6 +279,34 @@ class TurbDataset(Dataset):
 
         return y
 
+    def to_helical(self, X):
+
+        n = X.shape[-2] # get DNS square linear resolution
+        dims = (-3, -2, -1)
+        fX = torch.fft.rfftn(X, dim=dims) # forward real-to-half-complex FFT
+        wvs = torch.fft.fftfreq(n) # wavenumbers
+        rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
+
+        # wavevectors
+        k1, k2, k3 = torch.meshgrid([wvs, wvs, rwvs], indexing='ij')
+        kmag = torch.sqrt(k1**2 + k2**2 + k3**2)
+        kappa1 = k1 / kmag
+        kappa2 = k2 / kmag
+        kappa3 = k3 / kmag
+
+        # batch of wavevectors
+        k = torch.stack([k1, k2, k3]).unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
+
+        # batch of unit vectors
+        kappa = torch.stack([kappa1, kappa2, kappa3]).unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
+        kappasq = kappa * kappa
+
+        return X
+        #aplus = torch.fft.irfftn(aplus, dim=dims)
+        #aminus = torch.fft.irfftn(aminus, dim=dims)
+
+        #return aplus, aminus
+    
 def get_dataset(filenames, params):
 
     # === Get Dataset === #

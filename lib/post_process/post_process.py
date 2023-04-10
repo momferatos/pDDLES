@@ -181,9 +181,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         filtered_y_pred = dataset.LES_filter(y_pred)
 
 
-        ky, sy = spectrum(y, params)
-        ky_pred, sy_pred = spectrum(y_pred, params)
-        kX, sX = spectrum(X, params)
+        ky, sy = spectrum(y[-1], params, args)
+        ky_pred, sy_pred = spectrum(y_pred[-1], params, args)
+        kX, sX = spectrum(X[-1], params, args)
 
         fig, axs = plt.subplots(3, 3, figsize=(15, 10))
 
@@ -191,6 +191,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(X[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[0, 0].imshow(aux, cmap=cmap)
         if params["dimensions"] == 2:
             title = 'Feature $X = \overline{w}$'
@@ -201,6 +204,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(y[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[0, 1].imshow(aux, cmap=cmap)
         if params["prediction_mode"] == 'large_to_small':
             if params["dimensions"] == 2:
@@ -217,6 +223,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(y_pred[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[0, 2].imshow(aux, cmap=cmap)
         axs[0, 2].set_title('Prediction $y_p$')
 
@@ -234,6 +243,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(filtered_y[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[1, 1].imshow(aux[:, :], cmap=cmap)
         if params["prediction_mode"] == 'large_to_small':
             title = 'Target large scales $\overline{y} \simeq 0$'
@@ -244,6 +256,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(filtered_y_pred[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[1, 2].imshow(aux[:, :], cmap=cmap)
         axs[1, 2].set_title('Predicted large scales $\overline{y}_p$')
 
@@ -269,6 +284,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(aux.squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[2, 1].imshow(aux, cmap=cmap)
         if params["prediction_mode"] == 'large_to_small':
             title = 'Target small scales $y - \overline{y}$ \simeq y'
@@ -280,6 +298,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = np.array(aux.squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
             aux = aux[0]
+            if not args.scalar:
+                aux = aux[0]
+                
         axs[2, 2].imshow(aux[:, :], cmap=cmap)
         axs[2, 2].set_title('Predicted small scales $y_p - \overline{y}_p$')
 
@@ -495,7 +516,7 @@ def turbify_image(model, fname, alpha):
         outpath = os.path.join(params["session_name"], 'image.png')
         image = image.save(outpath)
 
-def spectrum(X, params):
+def spectrum(X, params, args):
         """Returns the mean (across a minibatch) energy spectrum
 
         Parameters
@@ -528,6 +549,7 @@ def spectrum(X, params):
         # define x, y variables for the energy spectrum
         wvs_spec = torch.linspace(0.0, wvmax, n)
         wvs_spec = wvs_spec.repeat(batch_size, 1)
+                    
         spec = torch.zeros_like(wvs_spec)
         # calculate the spectrum
         if params["dimensions"] == 2:
@@ -548,7 +570,9 @@ def spectrum(X, params):
                         device = spec.device
                         idx = idx.to(device)
                         fX = fX.to(device)
-                        spec[:, idx] += torch.abs(fX[:, :, i, j, k] ** 2)
+                        nrg = torch.abs(fX[:, i, j, k] ** 2)
+                        nrg = nrg.sum(dim=0)
+                        spec[:, idx] += nrg
 
         wvs_spec = wvs_spec[-1]
         wvs_spec = np.array(wvs_spec.to('cpu'))

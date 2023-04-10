@@ -22,6 +22,7 @@ import math
 
 from lib.post_process.post_process import plot_results
 
+
 class dummy:
     def init(self):
         return
@@ -78,7 +79,9 @@ class Trainer:
             with autocast:
                 y = input_data
                 X = self.dataset.LES_filter(y)
-
+                
+                y = self.dataset.to_helical(y)
+                
                 # normalize
                 X = self.dataset.normalize(X, 1)
                 y = self.dataset.normalize(y, 1, feature=False)

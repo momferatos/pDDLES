@@ -37,6 +37,8 @@ def parse_args():
 
     # === PATHS === #
 
+    parser.add_argument('-scalar', type=bool, default=False)
+    
     parser.add_argument('-device', type=str, default="cuda:0",
                                             help='Device to use')
     
@@ -261,8 +263,7 @@ def main():
 
     params.params['dimensions'] = 3
     
-    params.params['hdf5_key'] = ('ww'
-                                 if params.params["dimensions"] == 2 else 'scl')
+    params.params['hdf5_key'] = ('scl' if args.scalar else 'u')
     params.params['conv'] = (nn.Conv2d
                              if params.params["dimensions"] == 2 else nn.Conv3d)
     params.params['batchnorm'] = (nn.BatchNorm2d
