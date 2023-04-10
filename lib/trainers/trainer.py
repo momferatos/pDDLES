@@ -191,9 +191,11 @@ class Trainer:
             # === save model === #
             if self.args.main and epoch%self.args.save_every == 0:
                 self.save(epoch)
-                
-        plot_results(self.args, self.model, 
-                    self.train_losses, self.test_losses, self.params.params, self.dataset, self.test_gen)
+
+        if self.args.rank == 0:
+            plot_results(self.args, self.model, 
+                         self.train_losses, self.test_losses, self.params.params, self.dataset, self.test_gen)
+        
         print('Done.')
         
     def load_if_available(self):

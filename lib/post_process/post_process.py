@@ -295,9 +295,39 @@ def plot_results(args, model, train_losses, test_losses, params,
     
     #plt.show()
     plt.savefig(os.path.join(args.out, f'{args.model}.png'))
+
+    h5_filename = f'{args.model}.h5'
+    filename = os.path.join(args.out, h5_filename)
+    with h5py.File(filename, 'w') as h5file:
+        aux = np.array(y[0].squeeze(0).to('cpu'))
+        h5file['y'] = aux
+        aux = np.array(X[0].squeeze(0).to('cpu'))
+        h5file['X'] = aux
+        aux = np.array(y_pred[0].squeeze(0).to('cpu'))
+        h5file['y_pred'] = aux
+        aux = np.array(filtered_y[0].squeeze(0).to('cpu'))
+        h5file['ls_y'] = aux
+        aux = np.array(filtered_X[0].squeeze(0).to('cpu'))
+        h5file['ls_X'] = aux
+        aux = np.array(filtered_y_pred[0].squeeze(0).to('cpu'))
+        h5file['ls_y_pred'] = aux
+        aux = y - filtered_y
+        aux = np.array(aux[0].squeeze(0).to('cpu'))
+        h5file['ss_y'] = aux
+        aux = X - filtered_X
+        aux = np.array(aux[0].squeeze(0).to('cpu'))
+        h5file['ss_X'] = aux
+        aux = y_pred - filtered_y_pred
+        aux = np.array(aux[0].squeeze(0).to('cpu'))
+        h5file['ss_y_pred'] = aux
+
+    xmf_filename = ('.'.join(filename.split('.')[:-1] +
+                             ['xmf']))
+    write_xdmf_file(h5_filename,
+                    xmf_filename, params)
     return
 
-def write_xdmf_file(num_file, xmf_filename, params):
+def write_xdmf_file(h5_filename, xmf_filename, params):
     """Writes Xdmf file for visualzation of the corresponding HDF5 file with 
        Paraview
 
@@ -345,7 +375,7 @@ def write_xdmf_file(num_file, xmf_filename, params):
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/X'
+        f.write(f'  Format="HDF">{h5_filename}:/X'
                 '</DataItem>\n')
         f.write('      </Attribute>\n')
 
@@ -353,14 +383,14 @@ def write_xdmf_file(num_file, xmf_filename, params):
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/y</DataItem>\n')
+        f.write(f'  Format="HDF">{h5_filename}:/y</DataItem>\n')
         f.write('      </Attribute>\n')
 
         f.write('      <Attribute Center="Node" Name="y_pred"'
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/y_pred</DataItem>\n')
+        f.write(f'  Format="HDF">{h5_filename}:/y_pred</DataItem>\n')
         f.write('      </Attribute>\n')
 
         #
@@ -369,7 +399,7 @@ def write_xdmf_file(num_file, xmf_filename, params):
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/ls_X'
+        f.write(f'  Format="HDF">{h5_filename}:/ls_X'
                 '</DataItem>\n')
         f.write('      </Attribute>\n')
 
@@ -377,14 +407,14 @@ def write_xdmf_file(num_file, xmf_filename, params):
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/ls_y</DataItem>\n')
+        f.write(f'  Format="HDF">{h5_filename}:/ls_y</DataItem>\n')
         f.write('      </Attribute>\n')
 
         f.write('      <Attribute Center="Node" Name="ls_y_pred"'
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/ls_y_pred</DataItem>\n')
+        f.write(f'  Format="HDF">{h5_filename}:/ls_y_pred</DataItem>\n')
         f.write('      </Attribute>\n')
 
         #
@@ -393,7 +423,7 @@ def write_xdmf_file(num_file, xmf_filename, params):
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/ss_X'
+        f.write(f'  Format="HDF">{h5_filename}:/ss_X'
                 '</DataItem>\n')
         f.write('      </Attribute>\n')
 
@@ -401,14 +431,14 @@ def write_xdmf_file(num_file, xmf_filename, params):
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
             + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/ss_y</DataItem>\n')
+        f.write(f'  Format="HDF">{h5_filename}:/ss_y</DataItem>\n')
         f.write('      </Attribute>\n')
 
         f.write('      <Attribute Center="Node" Name="ss_y_pred"'
                 ' Type="Scalar">\n')
         f.write(('        <DataItem DataType="Float" Precision="     4"' 
                  + dimensions_str))
-        f.write(f'  Format="HDF">prediction.{num_file:06d}.h5:/ss_y_pred</DataItem>\n')
+        f.write(f'  Format="HDF">{h5_filename}:/ss_y_pred</DataItem>\n')
         f.write('      </Attribute>\n')
 
 
@@ -524,5 +554,6 @@ def spectrum(X, params):
         wvs_spec = np.array(wvs_spec.to('cpu'))
         spec = torch.mean(spec, dim=0).squeeze(0) # take mean across minibatch
         spec = np.array(spec.to('cpu'))
+
 
         return wvs_spec, spec

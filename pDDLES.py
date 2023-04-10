@@ -164,9 +164,9 @@ def parse_args():
                         '(default: 0.1)',
                         type=float)
 
-    parser.add_argument('-train_test_file',
+    parser.add_argument('-datafile',
                         help='Training/testing HDF5 filenames\' list file'
-                        '(default: \'train_test.dat\')',
+                        '(default: \'32.dat\')',
                         type=str)
 
     parser.add_argument('-hdf5_key',
@@ -311,15 +311,15 @@ def train(gpu, params, args):
     print('Distributed GPUs initialized.')
     print()
     ngpus = torch.cuda.device_count()
-    print(f'{ngpus} visible GPUs:')
+    print(f'Found {ngpus} visible GPU(s):')
     for i in range(ngpus):
-        print(f'({i} -  {torch.cuda.get_device_properties(i).name}')
+        print(f'{i} -  {torch.cuda.get_device_properties(i).name}')
     print()
     # === DATA === #
     get_dataset = getattr(__import__("lib.datasets.{}".format(args.dataset), fromlist=["get_dataset"]), "get_dataset")
     
     # read the list of training/test filenames
-    with open(params.params["train_test_file"], 'r') as f:
+    with open(params.params["datafile"], 'r') as f:
         filenames = [os.path.abspath(fn.strip()) for fn in list(f)]
         
     # detrmine the size of the DNS square/cube, N
@@ -365,8 +365,12 @@ def train(gpu, params, args):
     if args.device == 'gpu':
         device_ids = [0]
         model = model.cuda(0)
+
+    find_unused_parameters = None
+    if args.arch == 'WaveletNet':
+        find_unused_parameters = True
         
-    model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=True)
+    model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=find_unused_parameters)
     # model = torch.compile(model)
     
     # === LOSS === #
@@ -381,6 +385,7 @@ def train(gpu, params, args):
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
     Trainer(args, params, train_loader, test_loader, model, loss, optimizer, dataset).fit()
 
+    
 
 if __name__ == "__main__":
     main()

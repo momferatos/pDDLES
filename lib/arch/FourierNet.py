@@ -1,4 +1,3 @@
-es
 #######################################################
 # DDLES: Data-driven model for Large Eddy Simulation  #
 # Georgios Momferatos, 2022-2023                      #

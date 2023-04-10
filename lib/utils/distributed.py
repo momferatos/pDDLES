@@ -80,44 +80,44 @@ def init_dist_node(args):
         args.dist_url = f'tcp://localhost:{args.port}'
         args.world_size = args.ngpus_per_node
 
-def set_up_dist_env():
-    # 1. RANK
-    job_env = submitit.JobEnvironment()
-    global_rank = job_env.global_rank
+# def set_up_dist_env():
+#     # 1. RANK
+#     job_env = submitit.JobEnvironment()
+#     global_rank = job_env.global_rank
 
-    # 2. LOCAL_RANK
-    local_rank = job_env.local_rank
+#     # 2. LOCAL_RANK
+#     local_rank = job_env.local_rank
 
-    # 3. LOCAL_WORLD_SIZE
-    ngpus_per_node = torch.cuda.device_count()
+#     # 3. LOCAL_WORLD_SIZE
+#     ngpus_per_node = torch.cuda.device_count()
 
-    # 4. WORLD_SIZE
-    world_size = int(os.getenv("SLURM_NNODES")) * ngpus_per_node
+#     # 4. WORLD_SIZE
+#     world_size = int(os.getenv("SLURM_NNODES")) * ngpus_per_node
 
-    # 5. NODE_RANK
-    node_rank = int(os.getenv("SLURM_NODEID"))
+#     # 5. NODE_RANK
+#     node_rank = int(os.getenv("SLURM_NODEID"))
 
-    # 6. MASTER_ADDR
-    cmd = "scontrol show hostnames " + os.getenv("SLURM_JOB_NODELIST")
-    stdout = subprocess.check_output(cmd.split())
-    host_name = stdout.decode().splitlines()[0]
+#     # 6. MASTER_ADDR
+#     cmd = "scontrol show hostnames " + os.getenv("SLURM_JOB_NODELIST")
+#     stdout = subprocess.check_output(cmd.split())
+#     host_name = stdout.decode().splitlines()[0]
 
-    # 7. MASTER_PORT
-    port = 7777
+#     # 7. MASTER_PORT
+#     port = 7777
 
-    print(global_rank, host_name, port)
+#     print(global_rank, host_name, port)
     
-    # Set All the Necessary Environment Variables!
-    os.environ["RANK"] = str(global_rank)
-    os.environ["LOCAL_RANK"] = str(local_rank)
-    os.environ["LOCAL_WORLD_SIZE"] = str(ngpus_per_node)
-    os.environ["WORLD_SIZE"] = str(world_size)
-    os.environ["NODE_RANK"] = str(node_rank)
-    os.environ["MASTER_ADDR"] = host_name
-    os.environ["MASTER_PORT"] = str(port)
-    os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
-    os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-    os.environ["PYTHONUNBUFFERED"] = "1"
+#     # Set All the Necessary Environment Variables!
+#     os.environ["RANK"] = str(global_rank)
+#     os.environ["LOCAL_RANK"] = str(local_rank)
+#     os.environ["LOCAL_WORLD_SIZE"] = str(ngpus_per_node)
+#     os.environ["WORLD_SIZE"] = str(world_size)
+#     os.environ["NODE_RANK"] = str(node_rank)
+#     os.environ["MASTER_ADDR"] = host_name
+#     os.environ["MASTER_PORT"] = str(port)
+#     os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
+#     os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+#     os.environ["PYTHONUNBUFFERED"] = "1"
     
 def init_dist_gpu(gpu, args):
 
@@ -136,7 +136,7 @@ def init_dist_gpu(gpu, args):
         # 7. MASTER_PORT
         port = 7777
 
-        print(args.rank, args.world_size, host_name, port)
+        print(f'Process {args.rank}/{args.world_size} @ {host_name}:{port}')
     
         # Set All the Necessary Environment Variables!
         os.environ["MASTER_ADDR"] = host_name
