@@ -1,4 +1,4 @@
-
+es
 #######################################################
 # DDLES: Data-driven model for Large Eddy Simulation  #
 # Georgios Momferatos, 2022-2023                      #
@@ -64,7 +64,8 @@ class FourierBlock(nn.Module):
         self.actfun = self.params["actfun"] # select activation function
 
         # Create learnable spectral multiplication coefficients
-        alpha = torch.rand(params["num_coeffs"])
+        alpha = torch.rand(params["num_coeffs"],
+                           dtype=torch.float32)
         self.alpha = nn.Parameter(alpha, requires_grad=True)
         nn.init.uniform_(self.alpha)
 

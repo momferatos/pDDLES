@@ -64,7 +64,7 @@ def parse_args():
                                             help='batch size per gpu')
     parser.add_argument('-shuffle', type=bool_flag, default = True,
                                             help='Shuffle dataset')
-    parser.add_argument('-workers', type=int, default = 2,
+    parser.add_argument('-workers', type=int, default = 0,
                                             help='number of workers')
 
     # === Architecture === #
@@ -238,6 +238,7 @@ def main():
     
     args, parser = parse_args()
     if args.device == 'gpu':
+        args.tasks_per_node = 4
         args.partition = 'gpu'
         device = torch.device('cuda:0')
         torch.set_default_device(device)
@@ -365,7 +366,7 @@ def train(gpu, params, args):
         device_ids = [0]
         model = model.cuda(0)
         
-    model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids)
+    model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=True)
     # model = torch.compile(model)
     
     # === LOSS === #
@@ -378,7 +379,7 @@ def train(gpu, params, args):
 
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
-    Trainer(args, train_loader, test_loader, model, loss, optimizer, dataset).fit()
+    Trainer(args, params, train_loader, test_loader, model, loss, optimizer, dataset).fit()
 
 
 if __name__ == "__main__":

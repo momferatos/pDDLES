@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pywt
 import ptwt
-from Datasets import TurbDataset
+from lib.datasets.TurbDataset import TurbDataset
 
 class WaveletNet(nn.Module):
     """Wavelet neural network
@@ -192,3 +192,9 @@ class WaveletBlock(nn.Module):
         
         
         return out
+
+def get_model(params):
+
+    model = WaveletNet(params)
+
+    return model

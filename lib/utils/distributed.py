@@ -45,7 +45,7 @@ def fix_random_seeds(seed=31):
 def get_shared_folder() -> Path:
     path = '/project/scratch/p200140/'
     if Path(path).is_dir():
-        p = Path(f'{path}' + '/tmp')
+        p = Path(f'{path}' + '/pDDLES')
         p.mkdir(exist_ok=True)
         return p
     raise RuntimeError("No shared folder available")

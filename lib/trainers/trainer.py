@@ -20,15 +20,18 @@ from lib.utils.distributed import MetricLogger
 from glob import glob
 import math
 
+from lib.post_process.post_process import plot_results
+
 class dummy:
     def init(self):
         return
     
 class Trainer:
 
-    def __init__(self, args, train_loader, test_loader, model, loss, optimizer, dataset):
+    def __init__(self, args, params, train_loader, test_loader, model, loss, optimizer, dataset):
 
         self.args = args
+        self.params = params
         self.train_gen = train_loader
         self.test_gen = test_loader
         self.model = model
@@ -36,7 +39,9 @@ class Trainer:
         self.optimizer = optimizer
         self.dataset = dataset
         self.fp16_scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
-
+        self.test_losses = []
+        self.train_losses = []
+        
         # === TB writers === #
         if self.args.main:	
 
@@ -51,7 +56,8 @@ class Trainer:
 
         metric_logger = MetricLogger(args, delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
-
+        test_loss = 0.0
+        train_loss = 0.0
         for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
 
             # === Global Iteration === #
@@ -80,6 +86,8 @@ class Trainer:
                 preds = self.model(X)
                 labels = y
                 loss = self.loss(preds, labels)
+                train_loss += loss
+            
 
             # Sanity Check
             if not math.isfinite(loss.item()):
@@ -139,6 +147,7 @@ class Trainer:
                     preds = self.model(X)
                     labels = y
                     loss = self.loss(preds, labels)
+                    test_loss += loss
 
                 # Sanity Check
                 if not math.isfinite(loss.item()):
@@ -156,6 +165,8 @@ class Trainer:
             test_metric_logger.synchronize_between_processes()
             print("Averaged stats:", test_metric_logger)
 
+            self.test_losses.append(test_loss.item() / len(self.test_gen))
+            self.train_losses.append(train_loss.item() / len(self.train_gen))
 
     def fit(self):
 
@@ -180,7 +191,11 @@ class Trainer:
             # === save model === #
             if self.args.main and epoch%self.args.save_every == 0:
                 self.save(epoch)
-
+                
+        plot_results(self.args, self.model, 
+                    self.train_losses, self.test_losses, self.params.params, self.dataset, self.test_gen)
+        print('Done.')
+        
     def load_if_available(self):
 
         ckpts = sorted(glob(f'{self.args.out}/weights/{self.args.model}/Epoch_*.pth'))
