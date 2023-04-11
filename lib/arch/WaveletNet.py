@@ -39,7 +39,7 @@ class WaveletNet(nn.Module):
         self.waveletnet = nn.Sequential(
             *(params["num_blocks"] * [self.block]))
 
-        self.dataset = TurbDataset([], params)
+#        self.dataset = TurbDataset([], params)
         
         # set number of learnable parameters
         self.num_params = self.block.num_params
@@ -54,7 +54,7 @@ class WaveletNet(nn.Module):
         # unsqueeze back 1st dimension
         out  = out.unsqueeze(1)
         # truncate everything beyond DNS resolution 
-        out = self.dataset.truncate(out)
+#        out = self.dataset.truncate(out)
         
         return out
 

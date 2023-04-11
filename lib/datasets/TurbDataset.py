@@ -11,6 +11,8 @@ import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 
+import sys
+
 class TurbDataset(Dataset):
     """Dataset representing a shapshot from the time evolution of the passive
        scalar field
@@ -29,10 +31,64 @@ class TurbDataset(Dataset):
     
     """
     
-    def __init__(self, filenames, params):
+    def __init__(self, filenames, params, args):
         self.filenames = filenames # HDF5 filenames' list
         self.params = params
+        self.args = args
+        self.eps = 1.0e-5
         
+        filename = self.filenames[0]
+        # load data from HDF5 file
+        with h5py.File(filename, 'r') as h5file:
+            # 2d or 3d data, using float32 for better performance on the GPU
+            X = np.array(h5file[self.params["hdf5_key"]], dtype='float32')
+
+        if self.params["hdf5_key"] == 'u':
+            X = X.transpose([3, 2, 1, 0])
+            
+        X = torch.from_numpy(X)
+        X = X.unsqueeze(0)
+        device = X.device
+        self.dims = (-3, -2, -1)
+        
+        k, kappa = self.wave_vectors(X)
+
+        ex = torch.Tensor(
+            [1.0, 0.0, 0.0]).unsqueeze(
+                -1).unsqueeze(-1).unsqueeze(-1)
+        ex = ex.expand(-1, kappa.shape[1],
+                           kappa.shape[2], kappa.shape[3])
+        ex = ex.to(device)
+
+        ey = torch.Tensor(
+            [0.0, 1.0, 0.0]).unsqueeze(
+                -1).unsqueeze(-1).unsqueeze(-1)
+        ey = ey.expand(-1, kappa.shape[1],
+                           kappa.shape[2], kappa.shape[3])
+        ey = ey.to(device)
+        
+        ez = torch.Tensor(
+            [0.0, 0.0, 1.0]).unsqueeze(
+                -1).unsqueeze(-1).unsqueeze(-1)
+        ez = ez.expand(-1, kappa.shape[1],
+                           kappa.shape[2], kappa.shape[3])
+        ez = ez.to(device)
+
+        ezxk = torch.cross(ez, k, dim=0)
+        kxezxk = torch.cross(k, ezxk, dim=0)
+        mag = torch.einsum('i...,i...', ezxk, ezxk)
+        #mag = torch.where(torch.abs(mag) < self.eps, 1.0, mag)
+        mag_ezxk = torch.sqrt(mag)
+        mag = torch.einsum('i...,i...', kxezxk, kxezxk)
+        #mag = torch.where(torch.abs(mag) < self.eps, 1.0, mag)
+        mag_kxezxk = torch.sqrt(mag)
+        mask = (mag_ezxk != 0.0)
+        sqrt2 = np.sqrt(2.0)
+        
+        self.hplus = torch.where(mask, ezxk / (sqrt2 * mag_ezxk) + 1j * kxezxk / (sqrt2 * mag_kxezxk), (ex + 1j * ey) / sqrt2)
+
+        self.hminus = torch.where(mask, ezxk / (sqrt2 * mag_ezxk) - 1j * kxezxk / (sqrt2 * mag_kxezxk), (ex - 1j * ey) / sqrt2)
+                
         return
 
     def __len__(self):
@@ -50,8 +106,11 @@ class TurbDataset(Dataset):
             num_file = 0 #int(np.array(h5file['nfile'])[0])
             # time instant
             time = float(np.array(h5file['time'])[0])
+
+        if self.params["hdf5_key"] == 'u':
+            y = y.transpose([3, 2, 1, 0])
             
-        y = torch.from_numpy(y).transpose(0, -1)
+        y = torch.from_numpy(y)
         # truncate to Patterson-Orszag dealiasing limit
         y = self.truncate(y) 
         if self.params["hdf5_key"] == 'scl':
@@ -72,21 +131,32 @@ class TurbDataset(Dataset):
 
         """
 
+        
+                
         if self.params["norm_mode"] == 'mean_std':
 
+            
             # self.X_mean = 0.0
             # self.X_std = 1.0
             # self.y_mean = 0.0
             # self.y_std = 1.0
             # return
-            
+
             X_mean = 0.0
             y_mean = 0.0
             fac = 0.0
             nbatches = len(train_loader)
             for nbatch, y in enumerate(train_loader):
                 print(f'Computing mean: {nbatch}/{nbatches}')
-                # y = y.to(g.device)
+                # self.helical_checks(y[-1])
+                # y1 = self.to_helical(y)
+                # y2 = self.from_helical(y1)
+                # diff = y - y2
+                # print('diff:', diff.abs().max(), diff.abs().mean())
+                # print('input: ', self.divergence(y).abs().max())
+                # print('output: ', self.divergence(y2).abs().max())
+                #sys.exit(0)
+                
                 X = self.LES_filter(y)
 
                 if self.params["prediction_mode"] == 'large_to_small':
@@ -279,37 +349,149 @@ class TurbDataset(Dataset):
 
         return y
 
-    def to_helical(self, X):
+    def wave_vectors(self, X):
 
-        n = X.shape[-2] # get DNS square linear resolution
+        n = X.shape[-2]
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=dims) # forward real-to-half-complex FFT
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
 
         # wavevectors
         k1, k2, k3 = torch.meshgrid([wvs, wvs, rwvs], indexing='ij')
         kmag = torch.sqrt(k1**2 + k2**2 + k3**2)
+        kmag = torch.where(torch.abs(kmag) < self.eps, 1.0, kmag)
         kappa1 = k1 / kmag
         kappa2 = k2 / kmag
         kappa3 = k3 / kmag
 
+        device = X.device
+        
         # batch of wavevectors
-        k = torch.stack([k1, k2, k3]).unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
-
+        k = torch.stack([k1, k2, k3])
+        k = k.to(device)
         # batch of unit vectors
-        kappa = torch.stack([kappa1, kappa2, kappa3]).unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
-        kappasq = kappa * kappa
+        kappa = torch.stack([kappa1, kappa2, kappa3])
+        kappa = kappa.to(device)
+                
+        return k, kappa
 
-        return X
-        #aplus = torch.fft.irfftn(aplus, dim=dims)
-        #aminus = torch.fft.irfftn(aminus, dim=dims)
+    def helical_checks(self, X):
 
-        #return aplus, aminus
+        k, kappa = self.wave_vectors(X)
+        
+        d00 = torch.einsum('i...,i...',
+                           torch.conj_physical(self.hplus),
+                           self.hplus)
+        
+        d00 = d00.abs().max()
+        
+        d01 = torch.einsum('i...,i...',
+                           torch.conj_physical(self.hplus),
+                           self.hminus)
+        d01 = d01
+        d01 = d01.abs().max()
+        
+        d10 = torch.einsum('i...,i...',
+                           torch.conj_physical(self.hminus),
+                           self.hplus)
+        d10 = d10
+        d10 = d10.abs().max()
+        
+        d11 = torch.einsum('i...,i...',
+                           torch.conj_physical(self.hminus),
+                           self.hminus)
+        mask = (d11 != 0.0)
+        d11 = d11.abs().max()
+        
+        print('delta: ', torch.Tensor([[d00, d01], [d10, d11]]))
+
+        
+        return
     
-def get_dataset(filenames, params):
+    def to_helical(self, X):
+        
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='backward') 
+
+        device = fX.device
+        hplus = self.hplus.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
+        hplus = hplus.to(device)
+        hminus = self.hminus.unsqueeze(0).expand(
+            X.shape[0], -1, -1, -1, -1)
+        hminus = hminus.to(device)
+        
+        # mag = torch.einsum('bi...,bi...->b...',
+        #                    (hplus),
+        #                    hplus).unsqueeze(1)
+        # mag = torch.where(torch.abs(mag) < self.eps, 1.0, torch.sqrt(mag))
+        # mag = 1.0
+        # hplus = hplus / mag
+
+        # mag = torch.einsum('bi...,bi...->b...',
+        #                    (hminus),
+        #                    hminus).unsqueeze(1)
+        # mag = torch.where(torch.abs(mag) < self.eps, 1.0, torch.sqrt(mag))
+        # mag = 1.0
+        # hminus = hminus / mag
+        
+        aplus = torch.einsum('bi...,bi...->b...',
+                             (hminus), fX).unsqueeze(1)
+        aminus = torch.einsum('bi...,bi...->b...', 
+                              (hplus), fX).unsqueeze(1)
+
+        apm = torch.cat((aplus.real, aplus.imag,
+                         aminus.real, aminus.imag), dim=1)
+
+        apm = torch.fft.irfftn(apm, dim=self.dims, norm='backward')
+        
+        return apm
+
+
+    def from_helical(self, apm):
+
+        apm = torch.fft.rfftn(apm, dim=self.dims, norm='backward')
+        
+        aplus = apm[:, 0, :, :, :].unsqueeze(1) + 1j * apm[:, 1, :, :, :].unsqueeze(1)
+        aminus = apm[:, 2, :, :, :].unsqueeze(1) + 1j * apm[:, 3, :, :, :].unsqueeze(1)
+
+        device = apm.device
+        hplus = self.hplus.unsqueeze(0).expand(apm.shape[0], -1, -1, -1, -1)
+        hplus = hplus.to(device)
+        hminus = self.hminus.unsqueeze(0).expand(
+            apm.shape[0], -1, -1, -1, -1)
+        hminus = hminus.to(device)
+        
+        apm = aplus * hplus + aminus * hminus
+
+        X = torch.fft.irfftn(apm, dim=self.dims, norm='backward')
+        
+        return X
+
+    def divergence(self, X):
+
+        k, _ = self.wave_vectors(X)
+        k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
+        dims = (-3, -2, -1)
+        fX = torch.fft.rfftn(X, dim=dims, norm='backward') 
+        div = torch.einsum('bi...,bi...->b...', 1j * k, fX)
+        div = torch.fft.irfftn(div, dim=dims, norm='backward')
+        div = div.abs().max()
+        
+        return div
+
+    def vorticity(self, X):
+
+        k, _ = self.wave_vectors(X)
+        k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
+        dims = (-3, -2, -1)
+        fX = torch.fft.rfftn(X, dim=dims, norm='backward') # forward real-to-half-complex FF
+        w = torch.cross(1j * k, fX, dim=1)
+        w = torch.fft.irfftn(w, dim=dims, norm='backward')
+        
+        return w
+    
+def get_dataset(filenames, params, args):
 
     # === Get Dataset === #
-    train_dataset = TurbDataset(filenames, params)
+    train_dataset = TurbDataset(filenames, params, args)
 
     return train_dataset

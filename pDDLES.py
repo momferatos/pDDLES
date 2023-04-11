@@ -329,7 +329,7 @@ def train(gpu, params, args):
         y = np.array(h5file[params.params["hdf5_key"]], dtype='float32')
         params.params['n'] = y.shape[0]
         
-    dataset = get_dataset(filenames, params.params)
+    dataset = get_dataset(filenames, params.params, args)
     num_files = len(dataset)
     ntrain = int(0.8 * num_files)
     lengths = (ntrain, num_files - ntrain)

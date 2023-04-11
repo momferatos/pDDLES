@@ -59,6 +59,8 @@ class Trainer:
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
         test_loss = 0.0
         train_loss = 0.0
+        test_div = 0.0
+        train_div = 0.0
         for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
 
             # === Global Iteration === #
@@ -78,19 +80,21 @@ class Trainer:
             # === Forward pass === #
             with autocast:
                 y = input_data
+                
                 X = self.dataset.LES_filter(y)
-                
-                y = self.dataset.to_helical(y)
-                
+                                
                 # normalize
                 X = self.dataset.normalize(X, 1)
                 y = self.dataset.normalize(y, 1, feature=False)
-                    
-                preds = self.model(X)
+
+                Xh = self.dataset.to_helical(X)
+                print(X.shape, Xh.shape)
+                preds = self.dataset.from_helical(self.model(Xh))
                 labels = y
                 loss = self.loss(preds, labels)
                 train_loss += loss
-            
+                div = self.dataset.divergence(preds)
+                train_div = max(div, train_div)
 
             # Sanity Check
             if not math.isfinite(loss.item()):
@@ -114,14 +118,17 @@ class Trainer:
                 torch.cuda.synchronize()
                 
             metric_logger.update(train_loss=loss.item())
+            metric_logger.update(train_div=train_div.item())
 
             if self.args.main:
                 self.loss_writer(metric_logger.meters['train_loss'].value, it)
+                self.loss_writer(metric_logger.meters['train_div'].value, it)
                 self.lr_sched_writer(self.optimizer.param_groups[0]["lr"], it)
 
 
         metric_logger.synchronize_between_processes()
         print("Averaged stats:", metric_logger)
+        print(f'max(div) = {train_div}')
 
         with torch.no_grad():
             test_metric_logger = MetricLogger(args, delimiter="  ")
@@ -141,6 +148,7 @@ class Trainer:
                 # === Forward pass === #
                 with autocast:
                     y = input_data
+                    div = self.dataset.divergence(y)
                     X = self.dataset.LES_filter(y)
 
                     # normalize
@@ -151,6 +159,7 @@ class Trainer:
                     labels = y
                     loss = self.loss(preds, labels)
                     test_loss += loss
+                    test_div = max(div, test_div)
 
                 # Sanity Check
                 if not math.isfinite(loss.item()):
@@ -161,9 +170,11 @@ class Trainer:
                 if args.device == 'gpu':
                     torch.cuda.synchronize()
                 test_metric_logger.update(test_loss=loss.item())
+                test_metric_logger.update(test_div=div.item())
 
                 if self.args.main:
                     self.loss_writer(test_metric_logger.meters['test_loss'].value, it)
+                    self.loss_writer(test_metric_logger.meters['test_div'].value, it)
 
             test_metric_logger.synchronize_between_processes()
             print("Averaged stats:", test_metric_logger)

@@ -27,7 +27,7 @@ class FourierNet(nn.Module):
 
         super(FourierNet, self).__init__()
         self.params = params
-        self.dataset = TurbDataset([], self.params)
+        # self.dataset = TurbDataset([], self.params)
         
         # build pipeline of num_blocks FourierBlocks
         self.fouriernet = nn.Sequential(
@@ -38,7 +38,7 @@ class FourierNet(nn.Module):
     def forward(self, x):
         
         out = self.fouriernet(x)
-        out = self.dataset.truncate(out)
+        # out = self.dataset.truncate(out)
         
         return out
 
@@ -104,9 +104,9 @@ class FourierBlock(nn.Module):
         
         # forward FFT
         if self.params["dimensions"] == 2:
-            out = torch.fft.rfftn(x, dim=(2, 3), norm='forward')
+            out = torch.fft.rfftn(x, dim=(2, 3), norm='ortho')
         else:
-            out = torch.fft.rfftn(x, dim=(2, 3, 4), norm='forward')
+            out = torch.fft.rfftn(x, dim=(2, 3, 4), norm='ortho')
 
 
         # multiplication by learnable spectral coeficients
@@ -114,9 +114,9 @@ class FourierBlock(nn.Module):
         
         # inverse FFT
         if self.params["dimensions"] == 2:
-            out = torch.fft.irfftn(out, dim=(2, 3), norm='forward')
+            out = torch.fft.irfftn(out, dim=(2, 3), norm='ortho')
         else:
-            out = torch.fft.irfftn(out, dim=(2, 3, 4), norm='forward')
+            out = torch.fft.irfftn(out, dim=(2, 3, 4), norm='ortho')
             
         out = self.actfun(out)
         out = out.view(-1, 1)

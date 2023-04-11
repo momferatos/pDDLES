@@ -86,6 +86,7 @@ def predict(model, prediction_filenames, params, prediction_dataset,
                 filename = os.path.join(f'{params["session_name"]}',
                                         'prediction.'
                                         f'{num_file0:06d}.h5')
+
                 with h5py.File(filename, 'w') as h5file:
                     aux = np.array(yy.squeeze(0).to('cpu'))
                     h5file['y'] = aux
@@ -188,11 +189,11 @@ def plot_results(args, model, train_losses, test_losses, params,
         fig, axs = plt.subplots(3, 3, figsize=(15, 10))
 
 
-        aux = np.array(X[-1].squeeze(0).to('cpu'))
+        aux = dataset.vorticity(X)
+        aux = np.array(aux[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
                 
         axs[0, 0].imshow(aux, cmap=cmap)
         if params["dimensions"] == 2:
@@ -201,12 +202,12 @@ def plot_results(args, model, train_losses, test_losses, params,
             title = 'Feature $X = \overline{T}$'
         axs[0, 0].set_title(title)
 
-        aux = np.array(y[-1].squeeze(0).to('cpu'))
+        aux = dataset.vorticity(y)
+        aux = np.array(aux[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
-                
+            
         axs[0, 1].imshow(aux, cmap=cmap)
         if params["prediction_mode"] == 'large_to_small':
             if params["dimensions"] == 2:
@@ -220,12 +221,12 @@ def plot_results(args, model, train_losses, test_losses, params,
                 title = 'Target $y = T$'
         axs[0, 1].set_title(title)
 
-        aux = np.array(y_pred[-1].squeeze(0).to('cpu'))
+        aux = dataset.vorticity(y_pred)
+        aux = np.array(aux[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
-                
+            
         axs[0, 2].imshow(aux, cmap=cmap)
         axs[0, 2].set_title('Prediction $y_p$')
 
@@ -240,11 +241,11 @@ def plot_results(args, model, train_losses, test_losses, params,
         # axs[1, 0].imshow(X[:, :], cmap=cmap)
         # axs[1, 0].set_title('Feature large scales $\overline{X} = X$')
 
-        aux = np.array(filtered_y[-1].squeeze(0).to('cpu'))
+        aux = dataset.vorticity(filtered_y)
+        aux = np.array(aux[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
                 
         axs[1, 1].imshow(aux[:, :], cmap=cmap)
         if params["prediction_mode"] == 'large_to_small':
@@ -253,11 +254,12 @@ def plot_results(args, model, train_losses, test_losses, params,
             title = 'Target large scales $\overline{y} = \overline{w} = X$'
         axs[1, 1].set_title(title)
 
-        aux = np.array(filtered_y_pred[-1].squeeze(0).to('cpu'))
+        aux = dataset.vorticity(filtered_y_pred)
+        aux = np.array(aux[-1].squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
+            
                 
         axs[1, 2].imshow(aux[:, :], cmap=cmap)
         axs[1, 2].set_title('Predicted large scales $\overline{y}_p$')
@@ -283,10 +285,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = y[-1] - filtered_y[-1]
         aux = np.array(aux.squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
-                
+            
         axs[2, 1].imshow(aux, cmap=cmap)
         if params["prediction_mode"] == 'large_to_small':
             title = 'Target small scales $y - \overline{y}$ \simeq y'
@@ -297,10 +298,9 @@ def plot_results(args, model, train_losses, test_losses, params,
         aux = y_pred[-1] - filtered_y_pred[-1]
         aux = np.array(aux.squeeze(0).to('cpu'))
         if params["dimensions"] == 3:
+            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
             aux = aux[0]
-            if not args.scalar:
-                aux = aux[0]
-                
+                            
         axs[2, 2].imshow(aux[:, :], cmap=cmap)
         axs[2, 2].set_title('Predicted small scales $y_p - \overline{y}_p$')
 
@@ -320,26 +320,49 @@ def plot_results(args, model, train_losses, test_losses, params,
     h5_filename = f'{args.model}.h5'
     filename = os.path.join(args.out, h5_filename)
     with h5py.File(filename, 'w') as h5file:
-        aux = np.array(y[0].squeeze(0).to('cpu'))
+        aux = dataset.vorticity(y)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['y'] = aux
-        aux = np.array(X[0].squeeze(0).to('cpu'))
+
+        aux = dataset.vorticity(X)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['X'] = aux
-        aux = np.array(y_pred[0].squeeze(0).to('cpu'))
+
+        aux = dataset.vorticity(y_pred)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['y_pred'] = aux
-        aux = np.array(filtered_y[0].squeeze(0).to('cpu'))
+
+        aux = dataset.vorticity(filtered_y)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['ls_y'] = aux
-        aux = np.array(filtered_X[0].squeeze(0).to('cpu'))
+
+        aux = dataset.vorticity(filtered_X)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['ls_X'] = aux
-        aux = np.array(filtered_y_pred[0].squeeze(0).to('cpu'))
+
+        aux = dataset.vorticity(filtered_y_pred)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['ls_y_pred'] = aux
-        aux = y - filtered_y
-        aux = np.array(aux[0].squeeze(0).to('cpu'))
+
+        aux = dataset.vorticity(y - filtered_y)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['ss_y'] = aux
-        aux = X - filtered_X
+
+        aux = dataset.vorticity(X - filtered_X)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
         aux = np.array(aux[0].squeeze(0).to('cpu'))
         h5file['ss_X'] = aux
-        aux = y_pred - filtered_y_pred
-        aux = np.array(aux[0].squeeze(0).to('cpu'))
+        
+        aux = dataset.vorticity(y_pred - filtered_y_pred)
+        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
+        aux = np.array(aux[0].to('cpu'))
         h5file['ss_y_pred'] = aux
 
     xmf_filename = ('.'.join(filename.split('.')[:-1] +
