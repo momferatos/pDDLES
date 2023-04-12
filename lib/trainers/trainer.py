@@ -57,12 +57,12 @@ class Trainer:
 
         metric_logger = MetricLogger(args, delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
-        test_loss = 0.0
-        train_loss = 0.0
-        test_div = 0.0
-        train_div = 0.0
+        
         for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
-
+            test_loss = 0.0
+            train_loss = 0.0
+            test_div = 0.0
+            train_div = 0.0
             # === Global Iteration === #
             it = len(self.train_gen) * epoch + it
 
@@ -88,8 +88,13 @@ class Trainer:
                 y = self.dataset.normalize(y, 1, feature=False)
 
                 Xh = self.dataset.to_helical(X)
-                print(X.shape, Xh.shape)
-                preds = self.dataset.from_helical(self.model(Xh))
+
+                if not args.scalar:
+                    Xh = self.dataset.to_helical(X)
+                    preds = self.dataset.from_helical(self.model(Xh))
+                else:
+                    preds = self.model(X)
+                    
                 labels = y
                 loss = self.loss(preds, labels)
                 train_loss += loss
@@ -128,7 +133,6 @@ class Trainer:
 
         metric_logger.synchronize_between_processes()
         print("Averaged stats:", metric_logger)
-        print(f'max(div) = {train_div}')
 
         with torch.no_grad():
             test_metric_logger = MetricLogger(args, delimiter="  ")
@@ -155,7 +159,12 @@ class Trainer:
                     X = self.dataset.normalize(X, 1)
                     y = self.dataset.normalize(y, 1, feature=False)
 
-                    preds = self.model(X)
+                    if not args.scalar:
+                        Xh = self.dataset.to_helical(X)
+                        preds = self.dataset.from_helical(self.model(Xh))
+                    else:
+                        preds = self.model(X)
+                        
                     labels = y
                     loss = self.loss(preds, labels)
                     test_loss += loss

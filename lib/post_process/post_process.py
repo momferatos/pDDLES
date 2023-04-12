@@ -196,10 +196,8 @@ def plot_results(args, model, train_losses, test_losses, params,
             aux = aux[0]
                 
         axs[0, 0].imshow(aux, cmap=cmap)
-        if params["dimensions"] == 2:
-            title = 'Feature $X = \overline{w}$'
-        elif params["dimensions"] == 3:
-            title = 'Feature $X = \overline{T}$'
+        
+        title = 'Feature X'
         axs[0, 0].set_title(title)
 
         aux = dataset.vorticity(y)
@@ -209,16 +207,7 @@ def plot_results(args, model, train_losses, test_losses, params,
             aux = aux[0]
             
         axs[0, 1].imshow(aux, cmap=cmap)
-        if params["prediction_mode"] == 'large_to_small':
-            if params["dimensions"] == 2:
-                title = 'Target $y = w - \overline{w}$'
-            elif params["dimensions"] == 3:
-                title = 'Target $y = w - \overline{T}$'
-        else:
-            if params["dimensions"] == 2:
-                title = 'Target $y = w$'
-            elif params["dimensions"] == 3:
-                title = 'Target $y = T$'
+        title = 'Target y'
         axs[0, 1].set_title(title)
 
         aux = dataset.vorticity(y_pred)
@@ -248,10 +237,7 @@ def plot_results(args, model, train_losses, test_losses, params,
             aux = aux[0]
                 
         axs[1, 1].imshow(aux[:, :], cmap=cmap)
-        if params["prediction_mode"] == 'large_to_small':
-            title = 'Target large scales $\overline{y} \simeq 0$'
-        else:
-            title = 'Target large scales $\overline{y} = \overline{w} = X$'
+        title = 'Target large scales $\overline{y} = X$'
         axs[1, 1].set_title(title)
 
         aux = dataset.vorticity(filtered_y_pred)
@@ -275,7 +261,7 @@ def plot_results(args, model, train_losses, test_losses, params,
         axs[2, 0].axvline(x=k_DNS_cutoff, color='orange',
                         linestyle='--', label='DNS resolution cutoff')
         axs[2, 0].set_ylabel('$E(k)$')
-        axs[2, 0].set_title('Wavenumber $k$')
+        axs[2, 0].set_xlabel('Wavenumber $k$')
         axs[2, 0].legend(loc='best')
         axs[2, 0].set_title('Energy spectra')
 

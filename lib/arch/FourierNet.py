@@ -27,7 +27,7 @@ class FourierNet(nn.Module):
 
         super(FourierNet, self).__init__()
         self.params = params
-        # self.dataset = TurbDataset([], self.params)
+        self.dataset = TurbDataset([], self.params)
         
         # build pipeline of num_blocks FourierBlocks
         self.fouriernet = nn.Sequential(
@@ -38,7 +38,7 @@ class FourierNet(nn.Module):
     def forward(self, x):
         
         out = self.fouriernet(x)
-        # out = self.dataset.truncate(out)
+        out = self.dataset.truncate(out)
         
         return out
 

@@ -31,11 +31,13 @@ class TurbDataset(Dataset):
     
     """
     
-    def __init__(self, filenames, params, args):
+    def __init__(self, filenames, params):
         self.filenames = filenames # HDF5 filenames' list
         self.params = params
-        self.args = args
         self.eps = 1.0e-5
+
+        if not filenames:
+            return
         
         filename = self.filenames[0]
         # load data from HDF5 file
@@ -162,8 +164,10 @@ class TurbDataset(Dataset):
                 if self.params["prediction_mode"] == 'large_to_small':
                     y = y - X
 
-                X_mean += X.flatten().sum()
-                y_mean += y.flatten().sum()
+                tmp = torch.einsum('bijkl->i', X)
+                X_mean += torch.sqrt(torch.dot(tmp, tmp)).item()
+                tmp = torch.einsum('bijkl->i', y)
+                X_mean += torch.sqrt(torch.dot(tmp, tmp)).item()
                 fac += X.numel()
 
             X_mean /= fac
@@ -180,8 +184,11 @@ class TurbDataset(Dataset):
                 if self.params["prediction_mode"] == 'large_to_small':
                     y = y - X
 
-                X_std += torch.flatten((X - X_mean) ** 2).sum()
-                y_std += torch.flatten((y - y_mean) ** 2).sum()
+                tmp = (X - X_mean) ** 2
+                X_std += tmp.sum()
+                tmp = (y - y_mean) ** 2
+                y_std += tmp.sum()
+                
                 fac += X.numel()
 
             X_std /= fac
@@ -331,7 +338,8 @@ class TurbDataset(Dataset):
         """
 
         n = y.shape[-2] # get DNS square linear resolution
-        dims = (-2, -1) if self.params["dimensions"] == 2 else (-3, -2, -1)
+        # dims = (-2, -1) if self.params["dimensions"] == 2 else (-3, -2, -1)
+        dims = (-3, -2, -1)
         fy = torch.fft.rfftn(y, dim=dims) # forward real-to-half-complex FFT
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
@@ -489,9 +497,9 @@ class TurbDataset(Dataset):
         
         return w
     
-def get_dataset(filenames, params, args):
+def get_dataset(filenames, params):
 
     # === Get Dataset === #
-    train_dataset = TurbDataset(filenames, params, args)
+    train_dataset = TurbDataset(filenames, params)
 
     return train_dataset
