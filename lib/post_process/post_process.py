@@ -17,113 +17,8 @@ from torch.utils.data import DataLoader, random_split
 
 from lib.datasets.Datasets import TurbDataset
 
-def predict(model, prediction_filenames, params, prediction_dataset,
-            prediction_dataloader):
-    """Perform prediction
-
-    Parameters
-    ----------
-    model : PyTorch model
-       Model to use
-
-    prediction_filenames : list of strs
-       List of filenames
-
-    params: dict
-       Dictionary holding global parameters
-
-    prediction_dataset: PyTorch Dataset
-       Prediction dataset
-
-    prediciton_dataloader: PyTorch DataLoader
-       Prediction dataloader
-
-    Returns
-    -------
-    None
-
-    """
-
-    model = model.to(params["device"])
-    
-    
-    X_norm = [dataset.X_mean, dataset.X_std]
-    y_norm = [dataset.y_mean, dataset.y_std]
-   
-    prediction_dataset = TurbDataset(prediction_filenames, params)
-    prediction_loader = DataLoader(prediction_dataset,
-                              batch_size=params["batch_size"],
-                                   num_workers=params["num_workers"])
-    prediction_dataset.determine_norm_constants(prediction_loader)
-    with torch.no_grad():
-        for nbatch, y in enumerate(prediction_loader):
-            print('Predicting: '
-                  f'Minibatch {nbatch+1:04d}/{len(prediction_loader):04d}.') 
-            y,num_file,time = y
-
-            y = y.to(params["device"])
-            X = prediction_dataset.LES_filter(y)
-
-            if params["prediction_mode"] == 'large_to_small':
-                y = y - X
-
-            y_pred = model(X)
-
-            X = prediction_dataset.normalize(X, -1)
-            y = prediction_dataset.normalize(y, -1, feature=False)
-            y_pred = prediction_dataset.normalize(y_pred, -1, feature=False)
-
-            filtered_X = prediction_dataset.LES_filter(X)
-
-            filtered_y = prediction_dataset.LES_filter(y)
-
-            filtered_y_pred = prediction_dataset.LES_filter(y_pred)
-            num_file0 = 0
-
-            for (yy,XX,yy_pred,filtered_yy,filtered_XX,filtered_yy_pred,
-            nnum_file,ttime) in zip(y,X,y_pred,filtered_y,filtered_X,
-                                 filtered_y_pred,num_file,time):
-                filename = os.path.join(f'{params["session_name"]}',
-                                        'prediction.'
-                                        f'{num_file0:06d}.h5')
-
-                with h5py.File(filename, 'w') as h5file:
-                    aux = np.array(yy.squeeze(0).to('cpu'))
-                    h5file['y'] = aux
-                    aux = np.array(XX.squeeze(0).to('cpu'))
-                    h5file['X'] = aux
-                    aux = np.array(yy_pred.squeeze(0).to('cpu'))
-                    h5file['y_pred'] = aux
-                    aux = np.array(filtered_yy.squeeze(0).to('cpu'))
-                    h5file['ls_y'] = aux
-                    aux = np.array(filtered_XX.squeeze(0).to('cpu'))
-                    h5file['ls_X'] = aux
-                    aux = np.array(filtered_yy_pred.squeeze(0).to('cpu'))
-                    h5file['ls_y_pred'] = aux
-                    aux = yy - filtered_yy
-                    aux = np.array(aux.squeeze(0).to('cpu'))
-                    h5file['ss_y'] = aux
-                    aux = XX - filtered_XX
-                    aux = np.array(aux.squeeze(0).to('cpu'))
-                    h5file['ss_X'] = aux
-                    aux = yy_pred - filtered_yy_pred
-                    aux = np.array(aux.squeeze(0).to('cpu'))
-                    h5file['ss_y_pred'] = aux
-                    h5file['time'] = ttime.item()
-                    h5file['num_file'] = nnum_file.item()
-
-                xmf_filename = ('.'.join(filename.split('.')[:-1] +
-                                         ['xmf']))
-                write_xdmf_file(num_file0,
-                                xmf_filename, params)
-                num_file0 += 1
-
-    return
-
-
-
-def plot_results(args, model, train_losses, test_losses, params,
-                 dataset, dataloader):
+def plot_results(args, model, train_losses, test_losses,
+                 dataset, dataloader, scaler):
     
     """Plot results
 
@@ -141,8 +36,8 @@ def plot_results(args, model, train_losses, test_losses, params,
     test_losses : list of floats
        Test losses
 
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
     
     dataset : PyTorch dataset
        Dataset
@@ -160,20 +55,27 @@ def plot_results(args, model, train_losses, test_losses, params,
                                        'blue-black_cmap.npy')) / 255.
     cmap = ListedColormap(ncmap_blueblack)
 
-    X_norm = [dataset.X_mean, dataset.X_std]
-    y_norm = [dataset.y_mean, dataset.y_std]
+#    X_norm = [dataset.X_mean, dataset.X_std]
+#    y_norm = [dataset.y_mean, dataset.y_std]
+
 
     with torch.no_grad():
-        y = next(iter(dataloader))
+        y = next(iter(dataloader)).to(args.device)
         # y = y.unsqueeze(0).unsqueeze(0)
         y = dataset.truncate(y)
         X = dataset.LES_filter(y)
 
-        y_pred = model(X)
+        X, y = scaler.transform(X, y, direction='forward')
+        
+        X_hel = dataset.to_helical(X)
+        y_pred_hel = model(X_hel)
+        y_pred = dataset.from_helical(y_pred_hel)
+        div = dataset.divergence(y_pred).item()
+        print(f'maxdiv: {div}')
 
-        X = dataset.normalize(X, -1)
-        y = dataset.normalize(y, -1, feature=False)
-        y_pred = dataset.normalize(y_pred, -1, feature=False)
+        X, y = scaler.transform(X, y, direction='backward')
+        
+        _, y_pred = scaler.transform(X, y_pred, direction='backward')
 
         filtered_X = dataset.LES_filter(X)
 
@@ -182,41 +84,27 @@ def plot_results(args, model, train_losses, test_losses, params,
         filtered_y_pred = dataset.LES_filter(y_pred)
 
 
-        ky, sy = spectrum(y[-1], params, args)
-        ky_pred, sy_pred = spectrum(y_pred[-1], params, args)
-        kX, sX = spectrum(X[-1], params, args)
+        aux = y[-1].to('cpu')
+        ky, sy = spectrum(aux, args)
+        aux = y_pred[-1].to('cpu')
+        ky_pred, sy_pred = spectrum(aux, args)
+        aux = X[-1].to('cpu')
+        kX, sX = spectrum(aux, args)
 
         fig, axs = plt.subplots(3, 3, figsize=(15, 10))
 
-
-        aux = dataset.vorticity(X)
-        aux = np.array(aux[-1].squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-                
-        axs[0, 0].imshow(aux, cmap=cmap)
-        
+        aux = batch_to_numpy(y, dataset)
+        axs[0, 0].imshow(aux[-1], cmap=cmap)
         title = 'Feature X'
         axs[0, 0].set_title(title)
 
-        aux = dataset.vorticity(y)
-        aux = np.array(aux[-1].squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-            
-        axs[0, 1].imshow(aux, cmap=cmap)
+        aux = batch_to_numpy(y, dataset)
+        axs[0, 1].imshow(aux[-1], cmap=cmap)
         title = 'Target y'
         axs[0, 1].set_title(title)
 
-        aux = dataset.vorticity(y_pred)
-        aux = np.array(aux[-1].squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-            
-        axs[0, 2].imshow(aux, cmap=cmap)
+        aux = batch_to_numpy(y_pred, dataset)
+        axs[0, 2].imshow(aux[-1], cmap=cmap)
         axs[0, 2].set_title('Prediction $y_p$')
 
 
@@ -227,34 +115,20 @@ def plot_results(args, model, train_losses, test_losses, params,
         axs[1, 0].set_title('Training/Test losses')
         axs[1, 0].legend(loc='best')
 
-        # axs[1, 0].imshow(X[:, :], cmap=cmap)
-        # axs[1, 0].set_title('Feature large scales $\overline{X} = X$')
-
-        aux = dataset.vorticity(filtered_y)
-        aux = np.array(aux[-1].squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-                
-        axs[1, 1].imshow(aux[:, :], cmap=cmap)
+        aux = batch_to_numpy(filtered_y, dataset)
+        axs[1, 1].imshow(aux[-1], cmap=cmap)
         title = 'Target large scales $\overline{y} = X$'
         axs[1, 1].set_title(title)
 
-        aux = dataset.vorticity(filtered_y_pred)
-        aux = np.array(aux[-1].squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-            
-                
-        axs[1, 2].imshow(aux[:, :], cmap=cmap)
+        aux = batch_to_numpy(filtered_y_pred, dataset)
+        axs[1, 2].imshow(aux[-1], cmap=cmap)
         axs[1, 2].set_title('Predicted large scales $\overline{y}_p$')
 
         axs[2, 0].loglog(kX, sX, color='blue', label='Feature $X$')
         axs[2, 0].loglog(ky, sy, color='green', label='Target $y$')
         axs[2, 0].loglog(ky_pred, sy_pred, color='black',
                          label='Prediction $y_p$')
-        k_LES_cutoff = params["alpha"] * np.max(kX)
+        k_LES_cutoff = args.alpha * np.max(kX)
         axs[2, 0].axvline(x=k_LES_cutoff, color='red',
                           linestyle='--', label='LES filter cutoff')
         k_DNS_cutoff = np.sqrt(2.0) / 3.0 * np.max(kX)
@@ -265,34 +139,16 @@ def plot_results(args, model, train_losses, test_losses, params,
         axs[2, 0].legend(loc='best')
         axs[2, 0].set_title('Energy spectra')
 
-        #axs[2, 0].imshow(X - filtered_X, cmap=cmap)
-        #axs[2, 0].set_title('Feature small scales $X - \overline{X} = 0$')
-
-        aux = y[-1] - filtered_y[-1]
-        aux = np.array(aux.squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-            
-        axs[2, 1].imshow(aux, cmap=cmap)
-        if params["prediction_mode"] == 'large_to_small':
-            title = 'Target small scales $y - \overline{y}$ \simeq y'
-        else:
-            title = 'Target small scales $y - \overline{y}$'
+        aux = y - filtered_y
+        aux = batch_to_numpy(aux, dataset)
+        axs[2, 1].imshow(aux[-1], cmap=cmap)
+        title = 'Target small scales $y - \overline{y}$'
         axs[2, 1].set_title(title)
 
-        aux = y_pred[-1] - filtered_y_pred[-1]
-        aux = np.array(aux.squeeze(0).to('cpu'))
-        if params["dimensions"] == 3:
-            aux = np.sqrt(np.einsum('ijkl,ijkl->jkl', aux, aux))
-            aux = aux[0]
-                            
-        axs[2, 2].imshow(aux[:, :], cmap=cmap)
+        aux = y_pred - filtered_y_pred
+        aux = batch_to_numpy(aux, dataset)
+        axs[2, 2].imshow(aux[-1], cmap=cmap)
         axs[2, 2].set_title('Predicted small scales $y_p - \overline{y}_p$')
-
-        # axs[1, 2].imshow(np.abs(X[:, :] - filtered_y_pred[:, :]))
-        # axs[1, 2].set_title(
-        #     'Error in large scale prediction $|X - \overline{y}_p|$')
 
         for iax, ax in enumerate(axs.ravel()):
             if iax != 3 and iax != 6:
@@ -306,58 +162,53 @@ def plot_results(args, model, train_losses, test_losses, params,
     h5_filename = f'{args.model}.h5'
     filename = os.path.join(args.out, h5_filename)
     with h5py.File(filename, 'w') as h5file:
-        aux = dataset.vorticity(y)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(y, dataset)
         h5file['y'] = aux
 
-        aux = dataset.vorticity(X)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(X, dataset)
         h5file['X'] = aux
 
-        aux = dataset.vorticity(y_pred)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(y_pred, dataset)
         h5file['y_pred'] = aux
 
-        aux = dataset.vorticity(filtered_y)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(filtered_y, dataset)
         h5file['ls_y'] = aux
 
-        aux = dataset.vorticity(filtered_X)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(filtered_X, dataset)
         h5file['ls_X'] = aux
 
-        aux = dataset.vorticity(filtered_y_pred)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(filtered_y_pred, dataset)
         h5file['ls_y_pred'] = aux
 
-        aux = dataset.vorticity(y - filtered_y)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(y - filtered_y, dataset)
         h5file['ss_y'] = aux
 
-        aux = dataset.vorticity(X - filtered_X)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].squeeze(0).to('cpu'))
+        aux = batch_to_numpy(X - filtered_X, dataset)
         h5file['ss_X'] = aux
         
-        aux = dataset.vorticity(y_pred - filtered_y_pred)
-        aux = torch.sqrt(torch.einsum('ijklm,ijklm->iklm', aux, aux))
-        aux = np.array(aux[0].to('cpu'))
+        aux = batch_to_numpy(y_pred - filtered_y_pred, dataset)
         h5file['ss_y_pred'] = aux
 
     xmf_filename = ('.'.join(filename.split('.')[:-1] +
                              ['xmf']))
     write_xdmf_file(h5_filename,
-                    xmf_filename, params)
+                    xmf_filename, args)
     return
 
-def write_xdmf_file(h5_filename, xmf_filename, params):
+
+def batch_to_numpy(X, dataset):
+
+    X = dataset.vorticity(X)
+    X = torch.linalg.vector_norm(X, dim=1)
+    
+    #X = dataset.subgrid_scale_tensor(X)
+    #X = torch.linalg.matrix_norm(X, dim=(1, 2))
+
+    X = np.array(X[-1].to('cpu'))
+
+    return X
+
+def write_xdmf_file(h5_filename, xmf_filename, args):
     """Writes Xdmf file for visualzation of the corresponding HDF5 file with 
        Paraview
 
@@ -369,20 +220,20 @@ def write_xdmf_file(h5_filename, xmf_filename, params):
     xmf_filename : str
        Filename of Xdmf file
 
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
 
     """
 
-    if params["dimensions"] == 2:
-        num_el_str = ' 1    {}    {}"'.format(*(2 * [params["n"]]))
+    if args.dimensions == 2:
+        num_el_str = ' 1    {}    {}"'.format(*(2 * [args.n]))
         dimensions_str = (' Dimensions ' + 
-        '="    1    {}    {}" '.format(*(2 * [params["n"]])))
+        '="    1    {}    {}" '.format(*(2 * [args.n])))
 
     else:
-        num_el_str = ' {}    {}    {}"'.format(*(3 * [params["n"]]))
+        num_el_str = ' {}    {}    {}"'.format(*(3 * [args.n]))
         dimensions_str = (' Dimensions ' + 
-        '="    {}    {}    {}" '.format(*(3 * [params["n"]])))
+        '="    {}    {}    {}" '.format(*(3 * [args.n])))
 
     with open(xmf_filename, 'w') as f:
         f.write('<?xml version="1.0" encoding="utf-8"?>\n')
@@ -522,10 +373,10 @@ def turbify_image(model, fname, alpha):
         image = Image.fromarray(
             np.array(255. * image).astype(np.uint8).transpose(1,2,0))
         image = image.resize(dims)
-        outpath = os.path.join(params["session_name"], 'image.png')
+        outpath = os.path.join(args.session_name, 'image.png')
         image = image.save(outpath)
 
-def spectrum(X, params, args):
+def spectrum(X, args):
         """Returns the mean (across a minibatch) energy spectrum
 
         Parameters
@@ -536,9 +387,9 @@ def spectrum(X, params, args):
         """
         n = X.shape[-2]
         batch_size = X.shape[0]
-        dims = (-2, -1) if params["dimensions"] == 2 else (-3, -2, -1)
+        dims = (-2, -1) if args.dimensions == 2 else (-3, -2, -1)
         # forward FFT
-        fX = torch.fft.rfftn(X, dim=dims)
+        fX = torch.fft.rfftn(X, dim=dims, norm='ortho')
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # real-to-half-complex wavenumbes
         # define wavevector magnitudes
@@ -551,7 +402,7 @@ def spectrum(X, params, args):
                            wvs.view(1, -1, 1) ** 2 +
                            rwvs.view(1, 1, -1) ** 2)
         wvs3d = wvs3d.repeat(batch_size, n, 1, 1, 1)
-        wvms = wvs2d if params["dimensions"] == 2 else wvs3d
+        wvms = wvs2d if args.dimensions == 2 else wvs3d
 
         wvmax = torch.max(wvms) # maximum wavevector magnitude
 
@@ -561,7 +412,7 @@ def spectrum(X, params, args):
                     
         spec = torch.zeros_like(wvs_spec)
         # calculate the spectrum
-        if params["dimensions"] == 2:
+        if args.dimensions == 2:
             for k in range(len(rwvs)):
                 for j in range(len(wvs)):
                     idx = torch.argmin(torch.abs(wvs_spec[:, :] -
@@ -590,3 +441,118 @@ def spectrum(X, params, args):
 
 
         return wvs_spec, spec
+
+def plot_FourierNet(model, args):
+    plt.figure(figsize=(15, 10))
+
+    for param_tensor in model.state_dict():
+        if 'alpha' in param_tensor:
+            plt.plot(np.array(model.state_dict()[param_tensor].to('cpu')), label=f'{param_tensor}')
+
+    plt.legend(loc='best')
+    plt.savefig(os.path.join(args.out, 'alphas.png'))
+    return
+
+
+def predict(model, prediction_filenames, args, prediction_dataset,
+            prediction_dataloader):
+    """Perform prediction
+
+    Parameters
+    ----------
+    model : PyTorch model
+       Model to use
+
+    prediction_filenames : list of strs
+       List of filenames
+
+    args: Namespace
+       Namespace holding global parameters
+
+    prediction_dataset: PyTorch Dataset
+       Prediction dataset
+
+    prediciton_dataloader: PyTorch DataLoader
+       Prediction dataloader
+
+    Returns
+    -------
+    None
+
+    """
+
+    model = model.to(args.device)
+    
+    
+    X_norm = [dataset.X_mean, dataset.X_std]
+    y_norm = [dataset.y_mean, dataset.y_std]
+   
+    prediction_dataset = TurbDataset(prediction_filenames, args)
+    prediction_loader = DataLoader(prediction_dataset,
+                              batch_size=args.batch_size,
+                                   num_workers=args.num_workers)
+    prediction_dataset.determine_norm_constants(prediction_loader)
+    with torch.no_grad():
+        for nbatch, y in enumerate(prediction_loader):
+            print('Predicting: '
+                  f'Minibatch {nbatch+1:04d}/{len(prediction_loader):04d}.') 
+            y,num_file,time = y
+
+            y = y.to(args.device)
+            X = prediction_dataset.LES_filter(y)
+
+            if args.prediction_mode == 'large_to_small':
+                y = y - X
+
+            y_pred = model(X)
+
+            X = prediction_dataset.normalize(X, -1)
+            y = prediction_dataset.normalize(y, -1, feature=False)
+            y_pred = prediction_dataset.normalize(y_pred, -1, feature=False)
+
+            filtered_X = prediction_dataset.LES_filter(X)
+
+            filtered_y = prediction_dataset.LES_filter(y)
+
+            filtered_y_pred = prediction_dataset.LES_filter(y_pred)
+            num_file0 = 0
+
+            for (yy,XX,yy_pred,filtered_yy,filtered_XX,filtered_yy_pred,
+            nnum_file,ttime) in zip(y,X,y_pred,filtered_y,filtered_X,
+                                 filtered_y_pred,num_file,time):
+                filename = os.path.join(f'{args.session_name}',
+                                        'prediction.'
+                                        f'{num_file0:06d}.h5')
+
+                with h5py.File(filename, 'w') as h5file:
+                    aux = np.array(yy.squeeze(0).to('cpu'))
+                    h5file['y'] = aux
+                    aux = np.array(XX.squeeze(0).to('cpu'))
+                    h5file['X'] = aux
+                    aux = np.array(yy_pred.squeeze(0).to('cpu'))
+                    h5file['y_pred'] = aux
+                    aux = np.array(filtered_yy.squeeze(0).to('cpu'))
+                    h5file['ls_y'] = aux
+                    aux = np.array(filtered_XX.squeeze(0).to('cpu'))
+                    h5file['ls_X'] = aux
+                    aux = np.array(filtered_yy_pred.squeeze(0).to('cpu'))
+                    h5file['ls_y_pred'] = aux
+                    aux = yy - filtered_yy
+                    aux = np.array(aux.squeeze(0).to('cpu'))
+                    h5file['ss_y'] = aux
+                    aux = XX - filtered_XX
+                    aux = np.array(aux.squeeze(0).to('cpu'))
+                    h5file['ss_X'] = aux
+                    aux = yy_pred - filtered_yy_pred
+                    aux = np.array(aux.squeeze(0).to('cpu'))
+                    h5file['ss_y_pred'] = aux
+                    h5file['time'] = ttime.item()
+                    h5file['num_file'] = nnum_file.item()
+
+                xmf_filename = ('.'.join(filename.split('.')[:-1] +
+                                         ['xmf']))
+                write_xdmf_file(num_file0,
+                                xmf_filename, args)
+                num_file0 += 1
+
+    return

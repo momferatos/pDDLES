@@ -21,8 +21,8 @@ class SubgridLoss(nn.Module):
        
     Parameters
     ----------
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
     
 
     Attributes
@@ -31,52 +31,37 @@ class SubgridLoss(nn.Module):
 
     """
     
-    def __init__(self, params):
+    def __init__(self, args):
         super(SubgridLoss, self).__init__()
 
-        self.params = params
+        self.args = args
         self.__name__ = 'SubgridLoss'
-        self.loss_fn = nn.MSELoss()
-        self.dataset = TurbDataset([], self.params)
+        self.loss_fn = nn.MSELoss(reduction='mean')
+        self.dataset = TurbDataset([], self.args)
+        self.device = args.device
         
         return
 
     def forward(self, y_pred, y):
             
-        tens = self.subgrid_scale_tensor(y)
-        tens = torch.einsum('bij...,bij...->b...', tens, tens).unsqueeze(1)
+        tens = self.dataset.subgrid_scale_tensor(y)
+        #tens = torch.einsum('bij...,bij...->b...', tens, tens).unsqueeze(1)
 
-        tens_pred = self.subgrid_scale_tensor(y_pred)
-        tens_pred = torch.einsum('bij...,bij...->b...',
-                            tens_pred,
-                            tens_pred).unsqueeze(1)
-        
-        loss = self.loss_fn(tens_pred, tens)
-        
-        return loss
+        tens_pred = self.dataset.subgrid_scale_tensor(y_pred)
+        #tens_pred = torch.einsum('bij...,bij...->b...',
+        #                    tens_pred,
+        #                    tens_pred).unsqueeze(1)
 
-    def subgrid_scale_tensor(self, y):
+#        frob = torch.linalg.matrix_norm(tens, dim=(1, 2)).unsqueeze(1)
+#        frob_pred = torch.linalg.matrix_norm(tens_pred, dim=(1, 2)).unsqueeze(1)
 
+        #loss = self.loss_fn(tens_pred, tens)
+        tens_pred = tens_pred.to(self.device)
+        tens = tens.to(self.device)
         
-        tens1 = torch.einsum('bi...,bj...->bij...', y, y)
-        tens2 = self.dataset.LES_filter(tens1)
-        
-        y_filt = self.dataset.LES_filter(y)
-        tens3 = torch.einsum('bi...,bj...->bij...', y_filt, y_filt)
-        tens = tens2 - tens3
-
-        ident = torch.eye(3)
-        delta = ident.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-        dims = tens1.shape
-        delta = delta.expand(-1, -1, dims[-3], dims[-2], dims[-1])
-        trace = torch.einsum('bii...->b...',
-                             tens).unsqueeze(1).unsqueeze(2)
-        trace = trace.expand(-1, 3, 3, -1, -1, -1)
-        delta = delta.to(tens.device)
-        tens = tens - 1. / 3. * delta * trace
-        
-        return tens
+        diffsq_tens = (tens_pred - tens) ** 2
+        return diffsq_tens.mean()
     
-def get_loss(params):
+def get_loss(args):
 	
-    return SubgridLoss(params)
+    return SubgridLoss(args)

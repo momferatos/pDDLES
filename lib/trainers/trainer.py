@@ -20,19 +20,15 @@ from lib.utils.distributed import MetricLogger
 from glob import glob
 import math
 
-from lib.post_process.post_process import plot_results
-
-
 class dummy:
     def init(self):
         return
     
 class Trainer:
 
-    def __init__(self, args, params, train_loader, test_loader, model, loss, optimizer, dataset):
+    def __init__(self, args, train_loader, test_loader, model, loss, optimizer, dataset, scaler):
 
         self.args = args
-        self.params = params
         self.train_gen = train_loader
         self.test_gen = test_loader
         self.model = model
@@ -42,6 +38,9 @@ class Trainer:
         self.fp16_scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
         self.test_losses = []
         self.train_losses = []
+        self.device = args.device
+                
+        self.scaler = scaler
         
         # === TB writers === #
         if self.args.main:	
@@ -58,11 +57,11 @@ class Trainer:
         metric_logger = MetricLogger(args, delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
         
+        test_div = 0.0
+        train_div = 0.0
+        train_loss = 0.0
+        test_loss = 0.0
         for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
-            test_loss = 0.0
-            train_loss = 0.0
-            test_div = 0.0
-            train_div = 0.0
             # === Global Iteration === #
             it = len(self.train_gen) * epoch + it
 
@@ -79,22 +78,19 @@ class Trainer:
                 
             # === Forward pass === #
             with autocast:
-                y = input_data
+                y = input_data.to(self.device)
                 
                 X = self.dataset.LES_filter(y)
                                 
                 # normalize
-                X = self.dataset.normalize(X, 1)
-                y = self.dataset.normalize(y, 1, feature=False)
-
-                Xh = self.dataset.to_helical(X)
+                X, y = self.scaler.transform(X, y, direction='forward')
 
                 if not args.scalar:
                     Xh = self.dataset.to_helical(X)
                     preds = self.dataset.from_helical(self.model(Xh))
                 else:
                     preds = self.model(X)
-                    
+                
                 labels = y
                 loss = self.loss(preds, labels)
                 train_loss += loss
@@ -151,13 +147,11 @@ class Trainer:
                     
                 # === Forward pass === #
                 with autocast:
-                    y = input_data
-                    div = self.dataset.divergence(y)
+                    y = input_data.to(self.device)
                     X = self.dataset.LES_filter(y)
 
                     # normalize
-                    X = self.dataset.normalize(X, 1)
-                    y = self.dataset.normalize(y, 1, feature=False)
+                    X, y = self.scaler.transform(X, y, direction='forward')
 
                     if not args.scalar:
                         Xh = self.dataset.to_helical(X)
@@ -165,6 +159,8 @@ class Trainer:
                     else:
                         preds = self.model(X)
                         
+                    div = self.dataset.divergence(preds)
+                    
                     labels = y
                     loss = self.loss(preds, labels)
                     test_loss += loss
@@ -197,8 +193,8 @@ class Trainer:
         self.load_if_available()
 
         # === Schedules === #
-        lr_schedule = cosine_scheduler(
-                        base_value = self.args.lr_start * (self.args.batch_per_task * self.args.world_size) / 256.,
+        lr_schedule = constant_scheduler(
+                        base_value = self.args.lr_start, # * (self.args.batch_per_task * self.args.world_size) / 256.,
                         final_value = self.args.lr_end,
                         epochs = self.args.epochs,
                         niter_per_ep = len(self.train_gen),
@@ -215,12 +211,11 @@ class Trainer:
             if self.args.main and epoch%self.args.save_every == 0:
                 self.save(epoch)
 
-        if self.args.rank == 0:
-            plot_results(self.args, self.model, 
-                         self.train_losses, self.test_losses, self.params.params, self.dataset, self.test_gen)
         
         print('Done.')
         
+        return self.train_losses, self.test_losses
+    
     def load_if_available(self):
 
         ckpts = sorted(glob(f'{self.args.out}/weights/{self.args.model}/Epoch_*.pth'))
@@ -246,16 +241,16 @@ class Trainer:
                             optimizer=self.optimizer.state_dict(), 
                             fp16_scaler = self.fp16_scaler.state_dict(),
                             args = self.args,
-                            means = (self.dataset.X_mean, self.dataset.y_mean),
-                            stds = (self.dataset.X_std, self.dataset.y_std)
+                            means = (self.scaler.X_mean, self.scaler.y_mean),
+                            stds = (self.scaler.X_std, self.scaler.y_std)
                         )
         else:
             state = dict(epoch=epoch+1, 
                             model=self.model.module.state_dict(), 
                             optimizer=self.optimizer.state_dict(),
                             args = self.args,
-                            means = (self.dataset.X_mean, self.dataset.y_mean),
-                            stds = (self.dataset.X_std, self.dataset.y_std)
+                            means = (self.scaler.X_mean, self.scaler.y_mean),
+                            stds = (self.scaler.X_std, self.scaler.y_std)
                         )
 
             torch.save(state, "{}/weights/{}/Epoch_{}.pth".format(self.args.out, self.args.model, str(epoch).zfill(3) ))

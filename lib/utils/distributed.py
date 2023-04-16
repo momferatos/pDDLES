@@ -73,12 +73,19 @@ def init_dist_node(args):
             
     else:
 
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
+#        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
         args.ngpus_per_node = torch.cuda.device_count()
 
         args.rank = 0
         args.dist_url = f'tcp://localhost:{args.port}'
         args.world_size = args.ngpus_per_node
+
+        # Set All the Necessary Environment Variables!
+        os.environ["MASTER_ADDR"] = 'localhost'
+        os.environ["MASTER_PORT"] = str(args.port)
+        #os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
+        #os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+
 
 # def set_up_dist_env():
 #     # 1. RANK
@@ -141,8 +148,8 @@ def init_dist_gpu(gpu, args):
         # Set All the Necessary Environment Variables!
         os.environ["MASTER_ADDR"] = host_name
         os.environ["MASTER_PORT"] = str(port)
-        os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
-        os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
+#        os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
+#        os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
         
     else:
         args.gpu = gpu
@@ -203,10 +210,8 @@ class SmoothedValue(object):
         self.count += n
         self.total += value * n
         if args:
-            if args.device == 'gpu':
-                self.device = 'cuda:0'
-            else:
-                self.device = 'cpu'
+            self.device = args.device
+            
             
     def synchronize_between_processes(self):
         """

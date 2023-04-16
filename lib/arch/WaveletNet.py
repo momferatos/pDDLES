@@ -18,28 +18,28 @@ class WaveletNet(nn.Module):
 
     Parameters
     ----------
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
 
     Attributes
     ----------
     None
 
     """ 
-    def __init__(self, params):
+    def __init__(self, args):
 
         super(WaveletNet, self).__init__()
 
-        self.num_levels = (params["num_levels"] if params["num_levels"] != 0
+        self.num_levels = (args.num_levels if args.num_levels != 0
                            else int(np.log2(n)))
         # define WaveletBlock
-        self.block = WaveletBlock(params)
+        self.block = WaveletBlock(args)
 
         # build pipeline of num_blocks WaveletBlocks
         self.waveletnet = nn.Sequential(
-            *(params["num_blocks"] * [self.block]))
+            *(args.num_blocks * [self.block]))
 
-#        self.dataset = TurbDataset([], params)
+#        self.dataset = TurbDataset([], args)
         
         # set number of learnable parameters
         self.num_params = self.block.num_params
@@ -63,31 +63,32 @@ class WaveletBlock(nn.Module):
 
     Parameters
     ----------
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
 
     Attributes
     ----------
     None
     
     """ 
-    def __init__(self, params):
+    def __init__(self, args):
         
         super(WaveletBlock, self).__init__()
 
-        self.wavelet_type = params["wavelet_type"]
-        self.actfun = params["actfun"] # define activation function
+        self.args = args
+        self.wavelet_type = args.wavelet_type
+        self.actfun = args.actfun # define activation function
         self.wavelet = pywt.Wavelet(self.wavelet_type) # define wavelet
-        self.n = params['n'] # define resolution of the data square/cube
+        self.n = self.args.n # define resolution of the data square/cube
         # define number of levels of the wavelet transform
-        self.num_levels = params["num_levels"]
+        self.num_levels = args.num_levels
         # define wavelet coeffient multiplication mode
-        self.mode = params["wavelet_mode"] 
+        self.mode = args.wavelet_mode 
         self.dummy_param = nn.Parameter(torch.empty(0), requires_grad=True)
-        self.dimensions = params["dimensions"]
+        self.dimensions = args.dimensions
         
         # create a sample input
-        if params["dimensions"] == 2:        
+        if args.dimensions == 2:        
             X = torch.rand((1, self.n, self.n),
                            dtype=torch.float32)
         else:
@@ -95,7 +96,7 @@ class WaveletBlock(nn.Module):
                            dtype=torch.float32)
 
         # forward discrete wavelet transform
-        if params["dimensions"] == 2:
+        if args.dimensions == 2:
             wavecoeffs = ptwt.wavedec2(X, self.wavelet, mode='periodic',
                                        level=self.num_levels)
         else:
@@ -193,8 +194,8 @@ class WaveletBlock(nn.Module):
         
         return out
 
-def get_model(params):
+def get_model(args):
 
-    model = WaveletNet(params)
+    model = WaveletNet(args)
 
     return model

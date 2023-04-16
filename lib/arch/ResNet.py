@@ -14,8 +14,8 @@ class ResNetBlock(nn.Module):
     
     Parameters
     ----------
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
 
     Attributes
     ----------
@@ -23,26 +23,26 @@ class ResNetBlock(nn.Module):
 
     """
     
-    def __init__(self, params):
+    def __init__(self, args):
         
         super(ResNetBlock, self).__init__()
 
-        self.params = params
-        self.conv = params["conv"](self.params["num_channels"],
-                                   self.params["num_channels"],
-                                   kernel_size=self.params["kernel_size"],
+        self.args = args
+        self.conv = args.conv(self.args.num_channels,
+                                   self.args.num_channels,
+                                   kernel_size=self.args.kernel_size,
                                    padding='same',
                                    padding_mode='circular', bias=True)
-        if self.params["dropout"]:
-            self.dropout = nn.Dropout(self.params["dropout"])
-        self.batchnorm = self.params["batchnorm"](
-            num_features=self.params["num_channels"])
-        self.actfun = self.params["actfun"]
+        if self.args.dropout:
+            self.dropout = nn.Dropout(self.args.dropout)
+        self.batchnorm = self.args.batchnorm(
+            num_features=self.args.num_channels)
+        self.actfun = self.args.actfun
         
     def forward(self, x):
         
         out = self.conv(x)
-        if self.params["dropout"]:
+        if self.args.dropout:
             out = self.dropout(out)
         out = self.batchnorm(out)
         out = self.actfun(out)
@@ -54,8 +54,8 @@ class ResNet(nn.Module):
 
     Parameters
     ----------
-    params : dict
-       Dictionary holding global parameters
+    args : Namespace
+       Namespace holding global parameters
 
     Attributes
     ----------
@@ -63,29 +63,29 @@ class ResNet(nn.Module):
 
     """
     
-    def __init__(self, params):
+    def __init__(self, args):
 
         super(ResNet, self).__init__()
 
-        self.params = params
-        self.actfun = self.params["actfun"] # set activation function
+        self.args = args
+        self.actfun = self.args.actfun # set activation function
         # first convolutional layer, maps 1 channel to num_channels channels
-        self.convfirst = self.params["conv"](1, self.params["num_channels"],
-                                   kernel_size=self.params["kernel_size"],
+        self.convfirst = self.args.conv(1, self.args.num_channels,
+                                   kernel_size=self.args.kernel_size,
                                    padding='same',
                                    padding_mode='circular', bias=True)
-        self.batchnorm = self.params["batchnorm"](
-            num_features=self.params["num_channels"])
+        self.batchnorm = self.args.batchnorm(
+            num_features=self.args.num_channels)
         # build pipeline of num_blocks ResNetBlocks
         self.resnet = nn.Sequential(*(
-            self.params["num_blocks"] * [ResNetBlock(self.params)]))
+            self.args.num_blocks * [ResNetBlock(self.args)]))
         # last convolutional layer, maps num_channels channels back to 1 channel
-        self.convlast = self.params["conv"](self.params["num_channels"], 1,
-                                  kernel_size=self.params["kernel_size"],
+        self.convlast = self.args.conv(self.args.num_channels, 1,
+                                  kernel_size=self.args.kernel_size,
                                   padding='same',
                                   padding_mode='circular', bias=True)
-        self.batchnormlast = self.params["batchnorm"](num_features=1)
-        self.dataset = TurbDataset([], self.params)
+        self.batchnormlast = self.args.batchnorm(num_features=1)
+        self.dataset = TurbDataset([], self.args)
             
         self.init_weights(self.convfirst)
         self.init_weights(self.resnet)

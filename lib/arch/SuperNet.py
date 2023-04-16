@@ -20,42 +20,42 @@ class DownNet(nn.Module):
     in_dim: int
        Output length of the side of the data box/cube
 
-    params: dict
-       Dictionaty holding global parameters
+    args: Namespace
+       Namespace holding global parameters
 
     Attributes
     ----------
     None
 
     """ 
-    def __init__(self, in_dim, out_dim, params):
+    def __init__(self, in_dim, out_dim, args):
 
         super(DownNet, self).__init__()
 
         self.in_dim = in_dim
         self.out_dim = out_dim
-        self.params = params
-        self.conv = self.params["conv"](self.params["num_channels"],
-                                        self.params["num_channels"],
-                                         kernel_size=self.params["kernel_size"],
+        self.args = args
+        self.conv = self.args.conv(self.args.num_channels,
+                                        self.args.num_channels,
+                                         kernel_size=self.args.kernel_size,
                                          padding='same',
                                          padding_mode='circular',
                                          bias=True)
-        self.batchnorm = self.params["batchnorm"](
-            num_features=self.params["num_channels"])
-        if self.params["dropout"]:
-            self.dropout = nn.Dropout(self.params["dropout"])
-        self.actfun = self.params["actfun"]
+        self.batchnorm = self.args.batchnorm(
+            num_features=self.args.num_channels)
+        if self.args.dropout:
+            self.dropout = nn.Dropout(self.args.dropout)
+        self.actfun = self.args.actfun
         
         return
 
     
     def forward(self, x):
 
-        mode = 'bicubic' if self.params["dimensions"] == 2 else 'trilinear'
+        mode = 'bicubic' if self.args.dimensions == 2 else 'trilinear'
         out = F.interpolate(x, self.out_dim, mode=mode) # downscale
         out = self.conv(out) # convolve
-        if self.params["dropout"]:
+        if self.args.dropout:
             out = self.dropout(out) # apply dropout
         out = self.batchnorm(out) # apply batch normalization
         out = self.actfun(out) # apply nonlinear activation function
@@ -74,8 +74,8 @@ class UpNet(nn.Module):
     in_dim: int
        Output length of the side of the data box/cube
 
-    params: dict
-       Dictionaty holding global parameters
+    args: Namespace
+       Namespace holding global parameters
 
 
     Attributes
@@ -83,34 +83,34 @@ class UpNet(nn.Module):
     None
 
     """ 
-    def __init__(self, in_dim, out_dim, params):
+    def __init__(self, in_dim, out_dim, args):
 
         super(UpNet, self).__init__()
 
         self.in_dim = in_dim
         self.out_dim = out_dim
-        self.params = params
-        self.conv = self.params["conv"](self.params["num_channels"],
-                                        self.params["num_channels"],
-                                        kernel_size=self.params["kernel_size"],
+        self.args = args
+        self.conv = self.args.conv(self.args.num_channels,
+                                        self.args.num_channels,
+                                        kernel_size=self.args.kernel_size,
                                         padding='same',
                                         padding_mode='circular',
                                         bias=True)
-        if self.params["dropout"]:
-            self.dropout = nn.Dropout(self.params["dropout"])
-        self.batchnorm = self.params["batchnorm"](
-            num_features=self.params["num_channels"])
-        self.actfun = self.params["actfun"]
+        if self.args.dropout:
+            self.dropout = nn.Dropout(self.args.dropout)
+        self.batchnorm = self.args.batchnorm(
+            num_features=self.args.num_channels)
+        self.actfun = self.args.actfun
         
         return
 
     
     def forward(self, x):
 
-        mode = 'bicubic' if self.params["dimensions"] == 2 else 'trilinear'
+        mode = 'bicubic' if self.args.dimensions == 2 else 'trilinear'
         out = F.interpolate(x, self.out_dim, mode=mode) # upscale
         out = self.conv(out) # convolve
-        if self.params["dropout"]:
+        if self.args.dropout:
             out = self.dropout(out) # apply dropout
         out = self.batchnorm(out) # apply batch normalization
         out = self.actfun(out) # apply nonlinear activation function
@@ -122,54 +122,54 @@ class SuperNet(nn.Module):
     
     Parameters
     ----------
-    params: dict
-       Dictionaty holding global parameters
+    args: Namespace
+       NAmespace holding global parameters
 
     Attributes
     ----------
     None
 
     """ 
-    def __init__(self, params):
+    def __init__(self, args):
 
         super(SuperNet, self).__init__()
 
-        self.params = params
-        self.conv_first = self.params["conv"](
-            1, self.params["num_channels"],
-            kernel_size=self.params["kernel_size"],
+        self.args = args
+        self.conv_first = self.args.conv(
+            1, self.args.num_channels,
+            kernel_size=self.args.kernel_size,
             padding='same',
             padding_mode='circular',
             bias=True)
-        self.conv_last = self.params["conv"](
-            self.params["num_channels"], 1,
-            kernel_size=self.params["kernel_size"],
+        self.conv_last = self.args.conv(
+            self.args.num_channels, 1,
+            kernel_size=self.args.kernel_size,
             padding='same',
             padding_mode='circular',
             bias=True)
-        if self.params["dropout"]:
-            self.dropout = nn.Dropout(self.params["dropout"])
-        self.batchnorm_first = self.params["batchnorm"](
-            num_features=self.params["num_channels"])
-        self.batchnorm_first = self.params["batchnorm"](
-            num_features=self.params["num_channels"])
-        self.batchnorm_last = self.params["batchnorm"](
+        if self.args.dropout:
+            self.dropout = nn.Dropout(self.args.dropout)
+        self.batchnorm_first = self.args.batchnorm(
+            num_features=self.args.num_channels)
+        self.batchnorm_first = self.args.batchnorm(
+            num_features=self.args.num_channels)
+        self.batchnorm_last = self.args.batchnorm(
             num_features=1)
-        self.actfun = self.params["actfun"]
+        self.actfun = self.args.actfun
         
-        self.n = self.params["n"]
-        self.num_levels = (self.params["num_levels"]
-                           if self.params["num_levels"] != 0 else 1)
+        self.n = self.args.n
+        self.num_levels = (self.args.num_levels
+                           if self.args.num_levels != 0 else 1)
         self.factor = 2
         ups = []
         downs = []
         for i in range(self.num_levels):
             upnet = UpNet(in_dim=((self.factor ** i) * self.n),
                           out_dim=((self.factor ** (i + 1)) * self.n),
-                          params=self.params)
+                          args=self.args)
             downnet = DownNet(in_dim=((self.factor ** (i + 1)) * self.n),
                               out_dim=((self.factor ** i) * self.n),
-                            params=self.params) 
+                            args=self.args) 
             ups.append(upnet)
             downs.append(downnet)
             
@@ -177,8 +177,8 @@ class SuperNet(nn.Module):
         nets = ups + downs
 
         self.supernet = nn.Sequential(*nets)
-        self.actfun = self.params["actfun"]
-        self.dataset = TurbDataset([], self.params)
+        self.actfun = self.args.actfun
+        self.dataset = TurbDataset([], self.args)
         
         return
 
@@ -186,7 +186,7 @@ class SuperNet(nn.Module):
     def forward(self, x):
 
         out = self.conv_first(x)
-        if self.params["dropout"]:
+        if self.args.dropout:
             out = self.dropout(out)
         out = self.batchnorm_first(out)
         out = self.actfun(out)
@@ -194,7 +194,7 @@ class SuperNet(nn.Module):
         out = self.supernet(out)
         
         out = self.conv_last(out)
-        if self.params["dropout"]:
+        if self.args.dropout:
             out = self.dropout(out)
         out = self.batchnorm_last(out)
         out = self.actfun(out)
