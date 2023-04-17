@@ -30,31 +30,46 @@ class WaveletNet(nn.Module):
 
         super(WaveletNet, self).__init__()
 
+        self.args = args
         self.num_levels = (args.num_levels if args.num_levels != 0
                            else int(np.log2(n)))
         # define WaveletBlock
         self.block = WaveletBlock(args)
 
         # build pipeline of num_blocks WaveletBlocks
-        self.waveletnet = nn.Sequential(
-            *(args.num_blocks * [self.block]))
+        modulelist = nn.ModuleList([])
+        for _ in range(self.args.num_blocks):
+            modulelist.append(WaveletBlock(self.args))
+        self.waveletnet = nn.Sequential(*modulelist)
 
 #        self.dataset = TurbDataset([], args)
         
         # set number of learnable parameters
         self.num_params = self.block.num_params
+        self.device = args.device
+        self.dataset = TurbDataset([], args)
         
         return
 
     def forward(self, x):
 
-        # squeeze 1st dimension because of ptwt requirement
-        out = x.squeeze(1)
-        out = self.waveletnet(out)
-        # unsqueeze back 1st dimension
-        out  = out.unsqueeze(1)
+        # if self.args.scalar:
+        #     # squeeze 1st dimension because of ptwt requirement
+        #     out = x.squeeze(1)
+        #     out = self.waveletnet(out)
+        #     # unsqueeze back 1st dimension
+        #     out  = out.unsqueeze(1)
+        # else:
+        #     out = torch.zeros_like(x, device=self.device)
+        #     for j in range(x.shape[1]):
+        #         tmp = x[:, j, :, :, :]
+        #         tmp = self.waveletnet(tmp)
+        #         out[:, j, :, :, :] = tmp
+
+        out = self.waveletnet(x)
+        
         # truncate everything beyond DNS resolution 
-#        out = self.dataset.truncate(out)
+        out = self.dataset.truncate(out)
         
         return out
 
@@ -76,6 +91,7 @@ class WaveletBlock(nn.Module):
         super(WaveletBlock, self).__init__()
 
         self.args = args
+        self.device = args.device
         self.wavelet_type = args.wavelet_type
         self.actfun = args.actfun # define activation function
         self.wavelet = pywt.Wavelet(self.wavelet_type) # define wavelet
@@ -86,7 +102,14 @@ class WaveletBlock(nn.Module):
         self.mode = args.wavelet_mode 
         self.dummy_param = nn.Parameter(torch.empty(0), requires_grad=True)
         self.dimensions = args.dimensions
+
+
         
+
+        self.batchnorm = self.args.batchnorm(
+            num_features=1)
+
+                
         # create a sample input
         if args.dimensions == 2:        
             X = torch.rand((1, self.n, self.n),
@@ -144,8 +167,26 @@ class WaveletBlock(nn.Module):
         self.params_list = nn.ParameterList(params_list)
         
         return
-    
+
+
     def forward(self, x):
+                
+        if self.args.scalar:
+            # squeeze 1st dimension because of ptwt requirement
+            out = x.squeeze(1)
+            out = self.scalar_forward(out)
+            # unsqueeze back 1st dimension
+            out  = out.unsqueeze(1)
+        else:
+            out = torch.zeros_like(x, device=self.device)
+            for j in range(x.shape[1]):
+                tmp = x[:, j, :, :, :]
+                tmp = self.scalar_forward(tmp)
+                out[:, j, :, :, :] = tmp
+
+        return out
+                
+    def scalar_forward(self, x):
 
         # forward discrete wavelet transform
         if self.dimensions == 2:
@@ -154,7 +195,7 @@ class WaveletBlock(nn.Module):
         else:
             wavecoeffs = ptwt.wavedec3(x, self.wavelet, mode='periodic',
                                        level=self.num_levels)
-
+            
         # multiply wavelet coefficients by learnable parameters
         wavecoeffs_out = []
         for i,(wavecoeff,param) in enumerate(zip(wavecoeffs,
@@ -186,7 +227,10 @@ class WaveletBlock(nn.Module):
             out = ptwt.waverec2(wavecoeffs_out, self.wavelet)
         else:
             out = ptwt.waverec3(wavecoeffs_out, self.wavelet)
-            
+
+        out = out.unsqueeze(1)
+        out = self.batchnorm(out)
+                
         out = self.actfun(out) # apply activation function
 
         out = out.squeeze(1)

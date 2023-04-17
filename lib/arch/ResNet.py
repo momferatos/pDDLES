@@ -7,7 +7,7 @@
 
 import torch.nn as nn
 import torch.nn.functional as F
-from Datasets import TurbDataset
+from lib.datasets.TurbDataset import TurbDataset
 
 class ResNetBlock(nn.Module):
     """A convolutional block of a residual neural network (ResNet)
@@ -28,17 +28,19 @@ class ResNetBlock(nn.Module):
         super(ResNetBlock, self).__init__()
 
         self.args = args
-        self.conv = args.conv(self.args.num_channels,
-                                   self.args.num_channels,
+        self.conv = args.conv(self.args.num_featmaps,
+                                   self.args.num_featmaps,
                                    kernel_size=self.args.kernel_size,
                                    padding='same',
                                    padding_mode='circular', bias=True)
         if self.args.dropout:
             self.dropout = nn.Dropout(self.args.dropout)
         self.batchnorm = self.args.batchnorm(
-            num_features=self.args.num_channels)
+            num_features=self.args.num_featmaps)
         self.actfun = self.args.actfun
-        
+
+        return
+    
     def forward(self, x):
         
         out = self.conv(x)
@@ -68,23 +70,33 @@ class ResNet(nn.Module):
         super(ResNet, self).__init__()
 
         self.args = args
+
+        if self.args.scalar:
+            self.input_featmaps = 1
+        else:
+            self.input_featmaps = 4
+
         self.actfun = self.args.actfun # set activation function
-        # first convolutional layer, maps 1 channel to num_channels channels
-        self.convfirst = self.args.conv(1, self.args.num_channels,
+        # first convolutional layer, maps 1 feature map to num_featmaps feature maps
+        self.convfirst = self.args.conv(self.input_featmaps, self.args.num_featmaps,
                                    kernel_size=self.args.kernel_size,
                                    padding='same',
                                    padding_mode='circular', bias=True)
         self.batchnorm = self.args.batchnorm(
-            num_features=self.args.num_channels)
+            num_features=self.args.num_featmaps)
+        
         # build pipeline of num_blocks ResNetBlocks
-        self.resnet = nn.Sequential(*(
-            self.args.num_blocks * [ResNetBlock(self.args)]))
-        # last convolutional layer, maps num_channels channels back to 1 channel
-        self.convlast = self.args.conv(self.args.num_channels, 1,
+        modulelist = nn.ModuleList([])
+        for _ in range(self.args.num_blocks):
+            modulelist.append(ResNetBlock(self.args))
+        self.resnet = nn.Sequential(*modulelist)
+        
+        # last convolutional layer, maps num_featmaps feature maps back to 1 feature map
+        self.convlast = self.args.conv(self.args.num_featmaps, self.input_featmaps,
                                   kernel_size=self.args.kernel_size,
                                   padding='same',
                                   padding_mode='circular', bias=True)
-        self.batchnormlast = self.args.batchnorm(num_features=1)
+        self.batchnormlast = self.args.batchnorm(num_features=self.input_featmaps)
         self.dataset = TurbDataset([], self.args)
             
         self.init_weights(self.convfirst)
@@ -114,3 +126,9 @@ class ResNet(nn.Module):
         out = self.dataset.truncate(out)
         
         return out
+
+def get_model(args):
+
+    model = ResNet(args)
+
+    return model

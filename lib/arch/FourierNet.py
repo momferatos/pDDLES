@@ -29,11 +29,11 @@ class FourierNet(nn.Module):
         self.args = args
         self.dataset = TurbDataset([], self.args)
         self.linear = nn.Linear(1, 1, bias=False) # fully-connected layer
+        
         # build pipeline of num_blocks FourierBlocks
         modulelist = nn.ModuleList([])
-        for nblock in range(self.args.num_blocks):
+        for _ in range(self.args.num_blocks):
             modulelist.append(FourierBlock(self.args))
-            
         self.fouriernet = nn.Sequential(*modulelist)
         
         return
@@ -77,8 +77,12 @@ class FourierBlock(nn.Module):
 
         # self.linear = nn.Linear(1, 1) # fully-connected layer
 
-        self.batchnorm = self.args.batchnorm(
-        num_features=4)
+        if args.scalar:
+            self.batchnorm = self.args.batchnorm(
+                num_features=1)
+        else:
+            self.batchnorm = self.args.batchnorm(
+                num_features=4)
         
         wvs = torch.fft.fftfreq(self.args.n) # wavenumbers
         # wavenumbers in the real-to-half-complex dimension (dim=-1)

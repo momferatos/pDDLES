@@ -126,8 +126,8 @@ def parse_args():
                         default=8,
                         type=int)
 
-    parser.add_argument('-num_channels',
-                        help='Number of convolutional channels'
+    parser.add_argument('-num_featmaps',
+                        help='Number of CNN feature maps'
                         'in the ResNet or SuperNet',
                         default=8,
                         type=int)
@@ -253,11 +253,14 @@ def main():
     args.conv = (nn.Conv2d if args.dimensions == 2 else nn.Conv3d)
     args.batchnorm = (nn.BatchNorm2d if args.dimensions == 2 else nn.BatchNorm3d)
 
+    args.output_dir = get_shared_folder() / f'{args.model}'
+    args.out = args.output_dir
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+    print(args.out)
+    
     if args.slurm:
         # Almost copy-paste from https://github.com/facebookresearch/deit/blob/main/run_with_submitit.py
-        args.output_dir = get_shared_folder() / f'{args.model}'
-        args.out = args.output_dir
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         executor = submitit.AutoExecutor(folder=args.output_dir, slurm_max_num_timeout=30)
 
         executor.update_parameters(
@@ -354,7 +357,11 @@ def train(gpu, args):
     # === MODEL === #
     get_model = getattr(__import__("lib.arch.{}".format(args.arch), fromlist=["get_model"]), "get_model")
     model = get_model(args)
-        
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print()
+    print(f'{args.arch} trainable parameters: {trainable_params}.')
+    print()
+    
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
 
     device_ids = None
