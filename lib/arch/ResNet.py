@@ -5,6 +5,7 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from lib.datasets.TurbDataset import TurbDataset
@@ -70,11 +71,13 @@ class ResNet(nn.Module):
         super(ResNet, self).__init__()
 
         self.args = args
-
+        self.dims = (-3, -2 ,-1)
+        self.dataset = TurbDataset([], args)
+                                   
         if self.args.scalar:
             self.input_featmaps = 1
         else:
-            self.input_featmaps = 4
+            self.input_featmaps = 2
 
         self.actfun = self.args.actfun # set activation function
         # first convolutional layer, maps 1 feature map to num_featmaps feature maps
@@ -116,13 +119,17 @@ class ResNet(nn.Module):
     
     def forward(self, x):
 
-        out = self.convfirst(x)
+        out = self.dataset.to_helical(x)
+        out = torch.fft.irfftn(out, dim=self.dims, norm='ortho')
+        out = self.convfirst(out)
         out = self.batchnorm(out)
         out = self.actfun(out)
         out = self.resnet(out)
         out = self.convlast(out)
         out = self.batchnormlast(out)
         out = self.actfun(out)
+        out = torch.fft.rfftn(out, dim=self.dims, norm='ortho')
+        out = self.dataset.from_helical(out)
         out = self.dataset.truncate(out)
         
         return out

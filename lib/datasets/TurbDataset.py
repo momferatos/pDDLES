@@ -10,8 +10,11 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
-
+import pathlib
+import os
 import sys
+import shutil
+import math
 
 class TurbDataset(Dataset):
     """Dataset representing a shapshot from the time evolution of the passive
@@ -36,25 +39,38 @@ class TurbDataset(Dataset):
         self.args = args
         self.eps = 1.0e-5
         self.device = args.device
-        
-        if not filenames:
-            return
-        
-        filename = self.filenames[0]
-        # load data from HDF5 file
-        with h5py.File(filename, 'r') as h5file:
-            # 2d or 3d data, using float32 for better performance on the GPU
-            X = np.array(h5file[self.args.hdf5_key], dtype='float32')
-
-        if self.args.hdf5_key == 'u':
-            X = X.transpose([3, 2, 1, 0])
-            
-        X = torch.from_numpy(X)
-        X = X.unsqueeze(0)
-        
         self.dims = (-3, -2, -1)
+        self.datadict = {}
+        self.indices = []
         
-        k, kappa = self.wave_vectors(X)
+        # self.filesize = self.count_file_size()
+        # self.datalist = []
+        # if self.filesize > 512.0 or args.noload:
+        #     if self.filenames and args.copy:
+        #         self.copy()
+        # else:
+        #     nfiles = len(filenames)
+        #     for nfile, filename in enumerate(filenames):
+        #         if nfile % 250 == 0:
+        #             print(f'Loading file {nfile}/{nfiles} to memory.')
+        #         y = self.filename_to_tensor(filename)
+        #         self.datalist.append(y)
+            
+
+        if filenames:
+            filename = self.filenames[0]
+            # load data from HDF5 file
+            with h5py.File(filename, 'r') as h5file:
+                # 2d or 3d data, using float32 for better performance on the GPU
+                X = np.array(h5file[self.args.hdf5_key], dtype='float32')
+
+            if self.args.hdf5_key == 'u':
+                X = X.transpose([3, 2, 1, 0])
+
+            X = torch.from_numpy(X)
+            X = X.unsqueeze(0)
+                
+        k, kappa = self.wave_vectors(self.args.n)
 
         k = k.to(self.device)
         kappa = kappa.to(self.device)
@@ -92,36 +108,40 @@ class TurbDataset(Dataset):
         sqrt2 = np.sqrt(2.0)
         
         self.hplus = torch.where(mask, ezxk / (sqrt2 * mag_ezxk) + 1j * kxezxk / (sqrt2 * mag_kxezxk), (ex + 1j * ey) / sqrt2)
-
+        
         self.hminus = torch.where(mask, ezxk / (sqrt2 * mag_ezxk) - 1j * kxezxk / (sqrt2 * mag_kxezxk), (ex - 1j * ey) / sqrt2)
+
+        self.hplus = self.hplus.to(self.device)
+        self.hminus = self.hminus.to(self.device)
+
+#        self.helical_checks(X)
         
         return
-
+    
     def __len__(self):
-        return len(self.filenames)
+
+        if self.args.drop_last and len(self.filenames) % self.args.world_size != 0:  # type: ignore[arg-type]
+            # Split to nearest available length that is evenly divisible.
+            # This is to ensure each rank receives the same amount of data when
+            # using this Sampler.
+            length = math.ceil(
+                (len(self.filenames) - self.args.world_size) / self.args.world_size  # type: ignore[arg-type]
+            )
+        else:
+            length = math.ceil(len(self.filenames) / self.args.world_size)  # type: ignore[arg-type]
+
+        return length
 
     def __getitem__(self, idx):
 
-        filename = self.filenames[idx] 
-
-        # load data from HDF5 file
-        with h5py.File(filename, 'r') as h5file:
-            # 2d or 3d data, using float32 for better performance on the GPU
-            y = np.array(h5file[self.args.hdf5_key], dtype='float32')
-            # number of file 
-            num_file = 0 #int(np.array(h5file['nfile'])[0])
-            # time instant
-            time = float(np.array(h5file['time'])[0])
-
-        if self.args.hdf5_key == 'u':
-            y = y.transpose([3, 2, 1, 0])
+        
+        try:
+            y = self.datadict[idx]
+        except(KeyError):
+            # print(self.args.rank, idx)
+            filename = self.filenames[idx]
+            y = self.filename_to_tensor(filename)
             
-        y = torch.from_numpy(y)
-        # truncate to Patterson-Orszag dealiasing limit
-        y = self.truncate(y) 
-        if self.args.hdf5_key == 'scl':
-            y = y.unsqueeze(0) # Add extra tensor dimension required by PyTorch
-                
         return y
 
 
@@ -156,9 +176,9 @@ class TurbDataset(Dataset):
         # apply truncation mask
         mask = wvms > beta * kmax
         mask = mask.squeeze(0)
-        fout = torch.fft.rfftn(x, dim=dims, norm='ortho')
+        fout = torch.fft.rfftn(x, dim=self.dims, norm='ortho')
         fout[..., mask] = 0.0
-        out = torch.fft.irfftn(fout, dim=dims, norm='ortho')
+        out = torch.fft.irfftn(fout, dim=self.dims, norm='ortho')
 
 
         return out
@@ -182,7 +202,7 @@ class TurbDataset(Dataset):
         n = y.shape[-2] # get DNS square linear resolution
         # dims = (-2, -1) if self.args.dimensions == 2 else (-3, -2, -1)
         dims = (-3, -2, -1)
-        fy = torch.fft.rfftn(y, dim=dims, norm='ortho') # forward real-to-half-complex FFT
+        fy = torch.fft.rfftn(y, dim=self.dims, norm='ortho') # forward real-to-half-complex FFT
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
         # wavevector magnitudes
@@ -195,13 +215,12 @@ class TurbDataset(Dataset):
         wvmax = torch.max(wvms) # maximum wavevector magnitude
         mask = wvms > self.args.alpha * wvmax # define filter mask
         fy[..., mask] = 0.0 # apply filter
-        y = torch.fft.irfftn(fy, dim=dims, norm='ortho') # inverse half-complex-to-real FFT
+        y = torch.fft.irfftn(fy, dim=self.dims, norm='ortho') # inverse half-complex-to-real FFT
 
         return y
 
-    def wave_vectors(self, X):
+    def wave_vectors(self, n):
 
-        n = X.shape[-2]
         dims = (-3, -2, -1)
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
@@ -226,113 +245,100 @@ class TurbDataset(Dataset):
 
     def helical_checks(self, X):
 
-        k, kappa = self.wave_vectors(X)
+        k, kappa = self.wave_vectors(self.args.n)
         
-        d00 = torch.einsum('i...,i...',
-                           torch.conj_physical(self.hplus),
-                           self.hplus)
+        d00 = torch.linalg.vecdot(
+                           self.hplus,
+                           torch.conj_physical(self.hplus), dim=0)
         
         d00 = d00.abs().max()
         
-        d01 = torch.einsum('i...,i...',
-                           torch.conj_physical(self.hplus),
-                           self.hminus)
+        d01 = torch.linalg.vecdot(
+                           self.hplus,
+                           torch.conj_physical(self.hminus), dim=0)
         d01 = d01
         d01 = d01.abs().max()
         
-        d10 = torch.einsum('i...,i...',
-                           torch.conj_physical(self.hminus),
-                           self.hplus)
+        d10 = torch.linalg.vecdot(
+                           self.hminus,
+                           torch.conj_physical(self.hplus), dim=0)
         d10 = d10
         d10 = d10.abs().max()
         
-        d11 = torch.einsum('i...,i...',
-                           torch.conj_physical(self.hminus),
-                           self.hminus)
+        d11 = torch.linalg.vecdot(
+                           self.hminus,
+                           torch.conj_physical(self.hminus), dim=0)
         mask = (d11 != 0.0)
         d11 = d11.abs().max()
         
         print('delta: ', torch.Tensor([[d00, d01], [d10, d11]]))
 
-        
+        X = X.to(self.device)
+        X_hel = self.to_helical(X)
+        X_tr = self.from_helical(X_hel)
+        diff = X_tr - X
+        print('diff: ', torch.max(torch.abs(diff)))
+        print('div: ', torch.max(torch.abs(self.divergence(X_tr))))
+
+        sys.exit(0)
+              
         return
     
-    def to_helical(self, X):
+    def to_helical(self, u):
     
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
+        fu = torch.fft.rfftn(u, dim=self.dims, norm='ortho') 
         
-        hplus = self.hplus.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
-        hplus = hplus.to(self.device)
+        hplus = self.hplus.unsqueeze(0).expand(u.shape[0], -1, -1, -1, -1)
         hminus = self.hminus.unsqueeze(0).expand(
-            X.shape[0], -1, -1, -1, -1)
-        hminus = hminus.to(self.device)
+            u.shape[0], -1, -1, -1, -1)
         
-        # mag = torch.einsum('bi...,bi...->b...',
-        #                    (hplus),
-        #                    hplus).unsqueeze(1)
-        # mag = torch.where(torch.abs(mag) < self.eps, 1.0, torch.sqrt(mag))
-        # mag = 1.0
-        # hplus = hplus / mag
+        fuplus = torch.einsum('bi...,bi...->b...', fu, torch.conj_physical(hplus)).unsqueeze(1)
+        fuminus = torch.einsum('bi...,bi...->b...', fu, torch.conj_physical(hminus)).unsqueeze(1)
 
-        # mag = torch.einsum('bi...,bi...->b...',
-        #                    (hminus),
-        #                    hminus).unsqueeze(1)
-        # mag = torch.where(torch.abs(mag) < self.eps, 1.0, torch.sqrt(mag))
-        # mag = 1.0
-        # hminus = hminus / mag
+        out = torch.cat((fuplus, fuminus), dim=1)
         
-        aplus = torch.linalg.vecdot(hplus, fX, dim=1).unsqueeze(1)
-        aminus = torch.linalg.vecdot(hminus, fX, dim=1).unsqueeze(1)
+        return out
 
-        apm = torch.cat((aplus.real, aplus.imag,
-                         aminus.real, aminus.imag), dim=1)
 
-        apm = torch.fft.irfftn(apm, dim=self.dims, norm='ortho')
+    def from_helical(self, fupm):
         
-        return apm
-
-
-    def from_helical(self, apm):
-
-        apm = torch.fft.rfftn(apm, dim=self.dims, norm='ortho')
+        fuplus = fupm[:, 0, :, :, :].unsqueeze(1)
+        fuminus = fupm[:, 1, :, :, :].unsqueeze(1)
+                
+        hplus = self.hplus.unsqueeze(0).expand(fupm.shape[0], -1, -1, -1, -1)
         
-        aplus = apm[:, 0, :, :, :].unsqueeze(1) + 1j * apm[:, 1, :, :, :].unsqueeze(1)
-        aminus = apm[:, 2, :, :, :].unsqueeze(1) + 1j * apm[:, 3, :, :, :].unsqueeze(1)
-
-        hplus = self.hplus.unsqueeze(0).expand(apm.shape[0], -1, -1, -1, -1)
-        hplus = hplus.to(self.device)
         hminus = self.hminus.unsqueeze(0).expand(
-            apm.shape[0], -1, -1, -1, -1)
-        hminus = hminus.to(self.device)
+            fupm.shape[0], -1, -1, -1, -1)
         
-        apm = aplus * hplus + aminus * hminus
+                
+        fu = fuplus * hplus + fuminus * hminus
 
-        X = torch.fft.irfftn(apm, dim=self.dims, norm='ortho')
+        u = torch.fft.irfftn(fu, dim=self.dims, norm='ortho')
         
-        return X
+        return u
 
     def divergence(self, X):
 
-        k, _ = self.wave_vectors(X)
+        k, _ = self.wave_vectors(self.args.n)
 
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=dims, norm='ortho') 
-        div = torch.linalg.vecdot(1j * k, fX, dim=1)
-        div = torch.fft.irfftn(div, dim=dims, norm='ortho')
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
+        div = torch.linalg.vecdot(1j * k, torch.conj_physical(fX), dim=1)
+        div = torch.fft.irfftn(div, dim=self.dims, norm='ortho')
         div = div.abs().max()
         
         return div
 
     def vorticity(self, X):
         
-        k, _ = self.wave_vectors(X)
+        k, _ = self.wave_vectors(self.args.n)
         
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=dims, norm='ortho') # forward real-to-half-complex FF
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') # forward real-to-half-complex FF
         w = torch.cross(1j * k, fX, dim=1)
-        w = torch.fft.irfftn(w, dim=dims, norm='ortho')
+        w = torch.fft.irfftn(w, dim=self.dims, norm='ortho')
         
         return w
 
@@ -358,7 +364,80 @@ class TurbDataset(Dataset):
 
                     
         return tens
+
+    def filename_to_tensor(self, filename):
+        with h5py.File(filename, 'r') as h5file:
+            # 2d or 3d data, using float32 for better performance on the GPU
+            y = np.array(h5file[self.args.hdf5_key], dtype='float32')
+            # number of file 
+            num_file = 0 #int(np.array(h5file['nfile'])[0])
+            # time instant
+            time = float(np.array(h5file['time'])[0])
+            
+            if self.args.hdf5_key == 'u':
+                y = y.transpose([3, 2, 1, 0])
+                
+            y = torch.from_numpy(y)
+            # truncate to Patterson-Orszag dealiasing limit
+            y = self.truncate(y) 
+            if self.args.hdf5_key == 'scl':
+                y = y.unsqueeze(0) # Add extra tensor dimension required by PyTorch
+                
+        return y
     
+    def count_file_size(self):
+        
+
+        if not self.filenames:
+            return 0.0
+        
+        y = self.filename_to_tensor(self.filenames[0])
+
+        size = sys.getsizeof(y.storage)
+        size *= len(self.filenames)
+        GB = 1024.0 ** 3
+        size /= GB
+        
+        return size
+    
+    def copy(self):
+
+        if not self.filenames or args.localrank !=0:
+            return
+        
+        dest_dir = os.environ['LOCALSCRATCH']        
+        dest_dir = os.path.join(dest_dir, 'tmp')
+        pathlib.Path(dest_dir).mkdir(parents=True, exist_ok=True)
+
+        filenames = []
+        nfiles = len(self.filenames)
+        for nfile, src_filename in enumerate(self.filenames):
+            filename = os.path.split(src_filename)[-1]
+            dest_filename = os.path.join(dest_dir, filename)
+            if nfile % 250 == 0:
+                print(f'Copying file {nfile}/{nfiles}...')
+            if not os.path.exists(dest_filename):
+                try:
+                    shutil.copyfile(src_filename, dest_filename)
+                    filenames.append(dest_filename)
+                except(IOError):
+                    filenames.append(src_filename)
+                    
+
+        self.filenames = filenames
+            
+        return
+
+    def load(self, indices):
+        self.indices = indices
+        nfiles = len(self.indices)
+        for nfile, idx in enumerate(self.indices):
+            filename = self.filenames[idx]
+            if nfile % 100 == 0:
+                print(f'Loading file {nfile}/{nfiles} to memory.')
+            y = self.filename_to_tensor(filename)
+            self.datadict[idx] = y
+        return
     
 def get_dataset(filenames, args):
 

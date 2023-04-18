@@ -20,6 +20,7 @@ import torch.multiprocessing as mp
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
 
+
 import argparse
 from lib.utils.file import bool_flag
 from lib.utils.distributed import init_dist_node, init_dist_gpu, get_shared_folder
@@ -29,9 +30,12 @@ from pathlib import Path
 from lib.utils.parameters import parameters
 from lib.post_process.post_process import plot_results, plot_FourierNet
 from lib.datasets.Scaler import get_scaler
+from lib.datasets.Sampler import TurbSampler
 
 import h5py
 import numpy as np
+
+import math
 
 def parse_args():
 
@@ -39,7 +43,13 @@ def parse_args():
 
     # === PATHS === #
 
-    parser.add_argument('-scalar', type=bool, default=False)
+    parser.add_argument('-copy', action='store_false')
+
+    parser.add_argument('-drop_last', action='store_true')
+
+    parser.add_argument('-noload', action='store_true')
+    
+    parser.add_argument('-scalar', action='store_true')
     
     parser.add_argument('-dev', type=str, default="gpu",
                                             help='Device to use')
@@ -77,7 +87,7 @@ def parse_args():
     # === Architecture === #
     parser.add_argument('-arch', type=str, default = 'FourierNet',
                                             help='Architecture to choose')
-
+    
     # === Trainer === #
     parser.add_argument('-trainer', type=str, default = 'trainer',
                                             help='Trainer to choose')
@@ -101,7 +111,7 @@ def parse_args():
 
     # === SLURM === #
     parser.add_argument('-slurm', action='store_true',
-                                            help='Submit with slurm', default=False)
+                                            help='Submit with slurm')
     parser.add_argument('-tasks_per_node', type=int, default = 4,
                                             help='num of gpus per node')
     parser.add_argument('-nnodes', type=int, default = 1,
@@ -147,7 +157,7 @@ def parse_args():
     parser.add_argument('-num_coeffs',
                         help='Number of trainable spectral coefficients in' 
                         'each FourierBlock',
-                        default=128,
+                        default=0,
                         type=int)
 
     parser.add_argument('-num_levels',
@@ -257,7 +267,7 @@ def main():
     args.out = args.output_dir
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    print(args.out)
+    
     
     if args.slurm:
         # Almost copy-paste from https://github.com/facebookresearch/deit/blob/main/run_with_submitit.py
@@ -289,22 +299,20 @@ def main():
 
 def train(gpu, args):
 
-
     if args.dev == 'gpu':
         if args.slurm:
             args.device = 'cuda:0'
         else:
             args.device = f'cuda:{gpu}'
     else:
-        args.device = 'cpu'
+        args.device = args.rank
             
 #    torch.set_default_device(args.device)
     
     # === SET ENV === #
-    print('initializing environment...')
+    
     init_dist_gpu(gpu, args)
-    print('Distributed GPUs initialized.')
-    print()
+    
     ngpus = torch.cuda.device_count()
     print(f'Found {ngpus} visible GPU(s):')
     for i in range(ngpus):
@@ -325,27 +333,54 @@ def train(gpu, args):
         keys = h5file.keys()
         y = np.array(h5file[args.hdf5_key], dtype='float32')
         args.n = y.shape[0]
+
+    if args.num_coeffs == 0:
+        args.num_coeffs = int(math.sqrt(args.n ** 3))
         
-    dataset = get_dataset(filenames, args)
-    num_files = len(dataset)
+    num_files = len(filenames)
     ntrain = int(0.8 * num_files)
-    lengths = (ntrain, num_files - ntrain)
-    train_dataset, test_dataset = random_split(dataset, lengths)
-    train_sampler = DistributedSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
-    test_sampler = DistributedSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
+    g = torch.Generator()
+    g.manual_seed(777)
+    indices = torch.randperm(num_files, generator=g).tolist()  # type: ignore[arg-type]
+    train_filenames = []
+    for i in range(ntrain):
+        train_filenames.append(filenames[indices[i]])
+
+    test_filenames = []
+    for i in range(ntrain, num_files):
+        test_filenames.append(filenames[indices[i]])
+        
+    train_dataset = get_dataset(train_filenames, args)
+    test_dataset = get_dataset(test_filenames, args)
+   
+    #train_sampler = DistributedSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
+    #test_sampler = DistributedSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
+
+    train_sampler = TurbSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
+    test_sampler = TurbSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
+
+
     train_loader = DataLoader(dataset=train_dataset, 
                             sampler = train_sampler,
                             batch_size=args.batch_per_task, 
                             num_workers= args.workers,
                             pin_memory = True,
-                            drop_last = True
+                            drop_last = args.drop_last
                             )
+    scaler_loader = DataLoader(dataset=train_dataset,
+                            batch_size=args.batch_per_task, 
+                            num_workers= args.workers,
+                            pin_memory = True,
+                            drop_last = args.drop_last,
+                            shuffle=False   
+                            )
+
     test_loader = DataLoader(dataset=test_dataset, 
                             sampler = test_sampler,
                             batch_size=args.batch_per_task, 
                             num_workers= args.workers,
                             pin_memory = True,
-                            drop_last = True
+                            drop_last = args.drop_last
                             )
     print(f"Data loaded")
     
@@ -359,7 +394,7 @@ def train(gpu, args):
     model = get_model(args)
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print()
-    print(f'{args.arch} trainable parameters: {trainable_params}.')
+    print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
     print()
     
     model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
@@ -368,7 +403,10 @@ def train(gpu, args):
     if args.slurm:
         device_ids = [0]
     else:
-        device_ids = [gpu]
+        if args.dev == 'gpu':
+            device_ids = [gpu]
+        else:
+            device_ids = [args.rank]
         
     model = model.to(args.device)
         
@@ -387,19 +425,20 @@ def train(gpu, args):
     from lib.core.optimizer import get_optimizer
     optimizer = get_optimizer(model, args)
 
-    scaler = get_scaler(train_loader, args)
+    scaler = get_scaler(scaler_loader, args)
     scaler.fit()
-    
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
-    train_losses, test_losses = Trainer(args, train_loader, test_loader, model, loss, optimizer, dataset, scaler).fit()
+    train_losses, test_losses = Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset, scaler).fit()
 
 
-    plot_results(args, model, train_losses, test_losses, dataset, test_loader, scaler)
+    
+    plot_results(args, model, train_losses, test_losses, train_dataset, test_loader, scaler)
         
     if args.arch == 'FourierNet':
         plot_FourierNet(model, args)
     
+    return
 
 if __name__ == "__main__":
     main()

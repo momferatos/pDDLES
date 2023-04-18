@@ -28,20 +28,23 @@ class FourierNet(nn.Module):
         super(FourierNet, self).__init__()
         self.args = args
         self.dataset = TurbDataset([], self.args)
-        self.linear = nn.Linear(1, 1, bias=False) # fully-connected layer
         
         # build pipeline of num_blocks FourierBlocks
         modulelist = nn.ModuleList([])
         for _ in range(self.args.num_blocks):
             modulelist.append(FourierBlock(self.args))
         self.fouriernet = nn.Sequential(*modulelist)
+
+        self.linear = nn.Linear(1, 1, bias=False) # fully-connected layer
         
         return
 
     def forward(self, x):
         
-        dims = x.shape
-        out = self.fouriernet(x)
+        out = self.dataset.to_helical(x)
+        out = self.fouriernet(out)
+        out = self.dataset.from_helical(out)
+        dims = out.shape
         out = out.view(-1, 1)
         out = self.linear(out)
         out = out.view(dims)
@@ -66,23 +69,23 @@ class FourierBlock(nn.Module):
 
         super(FourierBlock, self).__init__()
 
+        self.dims = (-3, -2, -1)
         self.args = args
         self.actfun = self.args.actfun # select activation function
-
+        self.dataset = TurbDataset([], self.args)
+        
         # Create learnable spectral multiplication coefficients
         self.alpha = torch.rand(args.num_coeffs,
-                           dtype=torch.float32)
+                                dtype=torch.float32)
         self.alpha = nn.Parameter(self.alpha, requires_grad=True)
         nn.init.uniform_(self.alpha)
-
-        # self.linear = nn.Linear(1, 1) # fully-connected layer
 
         if args.scalar:
             self.batchnorm = self.args.batchnorm(
                 num_features=1)
         else:
             self.batchnorm = self.args.batchnorm(
-                num_features=4)
+                num_features=3)
         
         wvs = torch.fft.fftfreq(self.args.n) # wavenumbers
         # wavenumbers in the real-to-half-complex dimension (dim=-1)
@@ -113,34 +116,15 @@ class FourierBlock(nn.Module):
 
     
     def forward(self, x):
-
-        dims = x.shape
         
-        # forward FFT
-        if self.args.dimensions == 2:
-            out = torch.fft.rfftn(x, dim=(2, 3), norm='ortho')
-        else:
-            out = torch.fft.rfftn(x, dim=(2, 3, 4), norm='ortho')
-
-
-        # multiplication by trainable spectral coeficients
-        out = self.alpha[self.idxs] * out
         
-        # inverse FFT
-        if self.args.dimensions == 2:
-            out = torch.fft.irfftn(out, dim=(2, 3), norm='ortho')
-        else:
-            out = torch.fft.irfftn(out, dim=(2, 3, 4), norm='ortho')
-
-        # batch normalization
+        out = self.alpha[self.idxs] * x
+        out = self.dataset.from_helical(out)
         out = self.batchnorm(out)
-
         out = self.actfun(out)
-        #out = out.view(-1, 1)
-        #out = self.linear(out)
-        #out = out.view(dims)
-                
-        return out + x
+        out = self.dataset.to_helical(out)
+            
+        return out
 
 def get_model(args):
 

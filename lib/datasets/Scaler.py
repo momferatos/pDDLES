@@ -53,7 +53,8 @@ class NormScaler(object):
         fac = 0.0
         nbatches = len(self.dataloader)
         for nbatch, y in enumerate(self.dataloader):
-            print(f'Computing mean: {nbatch}/{nbatches}')
+            if nbatch % 10 == 0:
+                print(f'Computing mean: {nbatch}/{nbatches}')
 
             dims = y.shape
             X = self.dataset.LES_filter(y)
@@ -68,7 +69,8 @@ class NormScaler(object):
         y_std = 0.0
         fac = 0.0
         for nbatch, y in enumerate(self.dataloader):
-            print(f'Computing std: {nbatch}/{nbatches}')
+            if nbatch % 10 == 0:
+                print(f'Computing std: {nbatch}/{nbatches}')
             dims = y.shape
             X = self.dataset.LES_filter(y)
             tmp = (X - X_mean) ** 2
@@ -151,10 +153,7 @@ class MinmaxScaler(object):
         self.y_max = 0.0
         self.X_min = 0.0
 
-        if args.device == 'gpu':
-            self.device = 'cuda:0'
-        else:
-            self.device = 'cpu'
+        self.device = args.device
             
         return
 

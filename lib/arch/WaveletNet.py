@@ -33,9 +33,6 @@ class WaveletNet(nn.Module):
         self.args = args
         self.num_levels = (args.num_levels if args.num_levels != 0
                            else int(np.log2(n)))
-        # define WaveletBlock
-        self.block = WaveletBlock(args)
-
         # build pipeline of num_blocks WaveletBlocks
         modulelist = nn.ModuleList([])
         for _ in range(self.args.num_blocks):
@@ -45,30 +42,25 @@ class WaveletNet(nn.Module):
 #        self.dataset = TurbDataset([], args)
         
         # set number of learnable parameters
-        self.num_params = self.block.num_params
         self.device = args.device
         self.dataset = TurbDataset([], args)
+        self.dims = (-3, -2, -1)
+
+        self.linear = nn.Linear(1, 1, bias=False) # fully-connected layer
         
         return
 
     def forward(self, x):
 
-        # if self.args.scalar:
-        #     # squeeze 1st dimension because of ptwt requirement
-        #     out = x.squeeze(1)
-        #     out = self.waveletnet(out)
-        #     # unsqueeze back 1st dimension
-        #     out  = out.unsqueeze(1)
-        # else:
-        #     out = torch.zeros_like(x, device=self.device)
-        #     for j in range(x.shape[1]):
-        #         tmp = x[:, j, :, :, :]
-        #         tmp = self.waveletnet(tmp)
-        #         out[:, j, :, :, :] = tmp
-
+        out = self.dataset.to_helical(x)
+        out = torch.fft.irfftn(out, dim=self.dims, norm='ortho')
         out = self.waveletnet(x)
-        
-        # truncate everything beyond DNS resolution 
+        out = torch.fft.rfftn(out, dim=self.dims, norm='ortho')
+        out = self.dataset.from_helical(out)
+        dims = out.shape
+        out = out.view(-1, 1)
+        out = self.linear(out)
+        out = out.view(dims)
         out = self.dataset.truncate(out)
         
         return out
@@ -89,6 +81,58 @@ class WaveletBlock(nn.Module):
     def __init__(self, args):
         
         super(WaveletBlock, self).__init__()
+        self.args = args
+        self.device =self.args.device
+
+        if args.scalar:
+            self.nummods = 1
+        else:
+            self.nummods = 2
+
+        self.modlist = nn.ModuleList([])
+        for nummod in range(self.nummods):
+            self.modlist.append(ScalarWaveletBlock(self.args))
+
+        self.batchnorm = torch.nn.BatchNorm3d(num_features=self.nummods)
+        self.actfun = args.actfun
+        
+        return
+
+
+    def forward(self, x):
+                
+
+        tensorlist = []
+        for nummod in range(self.nummods):
+            tmp = x[:, nummod, :, :, :]
+            tmp = self.modlist[nummod](tmp)
+            tensorlist.append(tmp.unsqueeze(1))
+
+        out = torch.cat(tensorlist, dim=1)
+        
+        out = self.batchnorm(out)
+                
+        out = self.actfun(out) # apply activation function
+
+        return out
+                
+
+class ScalarWaveletBlock(nn.Module):
+    """Wavelet layer
+
+    Parameters
+    ----------
+    args : Namespace
+       Namespace holding global parameters
+
+    Attributes
+    ----------
+    None
+    
+    """ 
+    def __init__(self, args):
+        
+        super(ScalarWaveletBlock, self).__init__()
 
         self.args = args
         self.device = args.device
@@ -102,13 +146,6 @@ class WaveletBlock(nn.Module):
         self.mode = args.wavelet_mode 
         self.dummy_param = nn.Parameter(torch.empty(0), requires_grad=True)
         self.dimensions = args.dimensions
-
-
-        
-
-        self.batchnorm = self.args.batchnorm(
-            num_features=1)
-
                 
         # create a sample input
         if args.dimensions == 2:        
@@ -167,26 +204,8 @@ class WaveletBlock(nn.Module):
         self.params_list = nn.ParameterList(params_list)
         
         return
-
-
+    
     def forward(self, x):
-                
-        if self.args.scalar:
-            # squeeze 1st dimension because of ptwt requirement
-            out = x.squeeze(1)
-            out = self.scalar_forward(out)
-            # unsqueeze back 1st dimension
-            out  = out.unsqueeze(1)
-        else:
-            out = torch.zeros_like(x, device=self.device)
-            for j in range(x.shape[1]):
-                tmp = x[:, j, :, :, :]
-                tmp = self.scalar_forward(tmp)
-                out[:, j, :, :, :] = tmp
-
-        return out
-                
-    def scalar_forward(self, x):
 
         # forward discrete wavelet transform
         if self.dimensions == 2:
@@ -227,15 +246,7 @@ class WaveletBlock(nn.Module):
             out = ptwt.waverec2(wavecoeffs_out, self.wavelet)
         else:
             out = ptwt.waverec3(wavecoeffs_out, self.wavelet)
-
-        out = out.unsqueeze(1)
-        out = self.batchnorm(out)
-                
-        out = self.actfun(out) # apply activation function
-
-        out = out.squeeze(1)
-        
-        
+                    
         return out
 
 def get_model(args):

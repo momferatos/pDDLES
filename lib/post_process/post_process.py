@@ -14,6 +14,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from PIL import Image
 import torch
 from torch.utils.data import DataLoader, random_split
+import torch.distributed as dist
 
 from lib.datasets.Datasets import TurbDataset
 
@@ -67,9 +68,9 @@ def plot_results(args, model, train_losses, test_losses,
 
         X, y = scaler.transform(X, y, direction='forward')
         
-        X_hel = dataset.to_helical(X)
-        y_pred_hel = model(X_hel)
-        y_pred = dataset.from_helical(y_pred_hel)
+     
+        y_pred = model(X)
+
         div = dataset.divergence(y_pred).item()
         print(f'maxdiv: {div}')
 
@@ -159,40 +160,44 @@ def plot_results(args, model, train_losses, test_losses,
     #plt.show()
     plt.savefig(os.path.join(args.out, f'{args.model}.png'))
 
-    h5_filename = f'{args.model}.h5'
-    filename = os.path.join(args.out, h5_filename)
-    with h5py.File(filename, 'w') as h5file:
-        aux = batch_to_numpy(y, dataset)
-        h5file['y'] = aux
+    if args.rank == 0:
+        h5_filename = f'{args.model}.h5'
+        filename = os.path.join(args.out, h5_filename)
+        with h5py.File(filename, 'w') as h5file:
+            aux = batch_to_numpy(y, dataset)
+            h5file['y'] = aux
 
-        aux = batch_to_numpy(X, dataset)
-        h5file['X'] = aux
+            aux = batch_to_numpy(X, dataset)
+            h5file['X'] = aux
 
-        aux = batch_to_numpy(y_pred, dataset)
-        h5file['y_pred'] = aux
+            aux = batch_to_numpy(y_pred, dataset)
+            h5file['y_pred'] = aux
 
-        aux = batch_to_numpy(filtered_y, dataset)
-        h5file['ls_y'] = aux
+            aux = batch_to_numpy(filtered_y, dataset)
+            h5file['ls_y'] = aux
 
-        aux = batch_to_numpy(filtered_X, dataset)
-        h5file['ls_X'] = aux
+            aux = batch_to_numpy(filtered_X, dataset)
+            h5file['ls_X'] = aux
 
-        aux = batch_to_numpy(filtered_y_pred, dataset)
-        h5file['ls_y_pred'] = aux
+            aux = batch_to_numpy(filtered_y_pred, dataset)
+            h5file['ls_y_pred'] = aux
 
-        aux = batch_to_numpy(y - filtered_y, dataset)
-        h5file['ss_y'] = aux
+            aux = batch_to_numpy(y - filtered_y, dataset)
+            h5file['ss_y'] = aux
 
-        aux = batch_to_numpy(X - filtered_X, dataset)
-        h5file['ss_X'] = aux
+            aux = batch_to_numpy(X - filtered_X, dataset)
+            h5file['ss_X'] = aux
+
+            aux = batch_to_numpy(y_pred - filtered_y_pred, dataset)
+            h5file['ss_y_pred'] = aux
+
+        xmf_filename = ('.'.join(filename.split('.')[:-1] +
+                                 ['xmf']))
+        write_xdmf_file(h5_filename,
+                        xmf_filename, args)
         
-        aux = batch_to_numpy(y_pred - filtered_y_pred, dataset)
-        h5file['ss_y_pred'] = aux
-
-    xmf_filename = ('.'.join(filename.split('.')[:-1] +
-                             ['xmf']))
-    write_xdmf_file(h5_filename,
-                    xmf_filename, args)
+    dist.barrier()
+    
     return
 
 

@@ -41,6 +41,7 @@ class Trainer:
         self.device = args.device
                 
         self.scaler = scaler
+#        self.scaler.fit()
         
         # === TB writers === #
         if self.args.main:	
@@ -85,11 +86,7 @@ class Trainer:
                 # normalize
                 X, y = self.scaler.transform(X, y, direction='forward')
 
-                if not args.scalar:
-                    Xh = self.dataset.to_helical(X)
-                    preds = self.dataset.from_helical(self.model(Xh))
-                else:
-                    preds = self.model(X)
+                preds = self.model(X)
                 
                 labels = y
                 loss = self.loss(preds, labels)
@@ -153,11 +150,8 @@ class Trainer:
                     # normalize
                     X, y = self.scaler.transform(X, y, direction='forward')
 
-                    if not args.scalar:
-                        Xh = self.dataset.to_helical(X)
-                        preds = self.dataset.from_helical(self.model(Xh))
-                    else:
-                        preds = self.model(X)
+                
+                    preds = self.model(X)
                         
                     div = self.dataset.divergence(preds)
                     
