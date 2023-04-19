@@ -26,7 +26,7 @@ class dummy:
     
 class Trainer:
 
-    def __init__(self, args, train_loader, test_loader, model, loss, optimizer, dataset, scaler):
+    def __init__(self, args, train_loader, test_loader, model, loss, optimizer, dataset):
 
         self.args = args
         self.train_gen = train_loader
@@ -39,8 +39,6 @@ class Trainer:
         self.test_losses = []
         self.train_losses = []
         self.device = args.device
-                
-        self.scaler = scaler
 #        self.scaler.fit()
         
         # === TB writers === #
@@ -80,16 +78,23 @@ class Trainer:
             # === Forward pass === #
             with autocast:
                 y = input_data.to(self.device)
+                ymean = y.mean()
+                ystd = y.std()
                 
                 X = self.dataset.LES_filter(y)
-                                
+                Xmean = X.mean()
+                Xstd = X.std()
+                X = (X - Xmean) / Xstd
+                
                 # normalize
-                X, y = self.scaler.transform(X, y, direction='forward')
+                # X, y = self.scaler.transform(X, y, direction='forward')
 
                 preds = self.model(X)
                 
-                labels = y
+                labels = (y - ymean) / ystd 
+                
                 loss = self.loss(preds, labels)
+                
                 train_loss += loss
                 div = self.dataset.divergence(preds)
                 train_div = max(div, train_div)
@@ -145,17 +150,24 @@ class Trainer:
                 # === Forward pass === #
                 with autocast:
                     y = input_data.to(self.device)
+                    ymean = y.mean()
+                    ystd = y.std()
+                    
                     X = self.dataset.LES_filter(y)
-
+                    Xmean = X.mean()
+                    Xstd = X.std()
+                    
+                    X = (X - Xmean) / Xstd
                     # normalize
-                    X, y = self.scaler.transform(X, y, direction='forward')
+                    #X, y = self.scaler.transform(X, y, direction='forward')
 
                 
                     preds = self.model(X)
                         
                     div = self.dataset.divergence(preds)
                     
-                    labels = y
+                    labels = (y - ymean) / ystd
+                    
                     loss = self.loss(preds, labels)
                     test_loss += loss
                     test_div = max(div, test_div)
@@ -234,17 +246,13 @@ class Trainer:
                             model=self.model.module.state_dict(), 
                             optimizer=self.optimizer.state_dict(), 
                             fp16_scaler = self.fp16_scaler.state_dict(),
-                            args = self.args,
-                            means = (self.scaler.X_mean, self.scaler.y_mean),
-                            stds = (self.scaler.X_std, self.scaler.y_std)
+                            args = self.args
                         )
         else:
             state = dict(epoch=epoch+1, 
                             model=self.model.module.state_dict(), 
                             optimizer=self.optimizer.state_dict(),
-                            args = self.args,
-                            means = (self.scaler.X_mean, self.scaler.y_mean),
-                            stds = (self.scaler.X_std, self.scaler.y_std)
+                            args = self.args
                         )
 
             torch.save(state, "{}/weights/{}/Epoch_{}.pth".format(self.args.out, self.args.model, str(epoch).zfill(3) ))

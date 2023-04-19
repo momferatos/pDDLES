@@ -32,7 +32,7 @@ class WaveletNet(nn.Module):
 
         self.args = args
         self.num_levels = (args.num_levels if args.num_levels != 0
-                           else int(np.log2(n)))
+                           else int(np.log2(args.n)))
         # build pipeline of num_blocks WaveletBlocks
         modulelist = nn.ModuleList([])
         for _ in range(self.args.num_blocks):
@@ -83,7 +83,9 @@ class WaveletBlock(nn.Module):
         super(WaveletBlock, self).__init__()
         self.args = args
         self.device =self.args.device
-
+        self.dataset = TurbDataset([], args)
+        self.dims = (-3, -2, -1)
+        
         if args.scalar:
             self.nummods = 1
         else:
@@ -93,7 +95,7 @@ class WaveletBlock(nn.Module):
         for nummod in range(self.nummods):
             self.modlist.append(ScalarWaveletBlock(self.args))
 
-        self.batchnorm = torch.nn.BatchNorm3d(num_features=self.nummods)
+        self.batchnorm = torch.nn.BatchNorm3d(num_features=2)
         self.actfun = args.actfun
         
         return
@@ -109,11 +111,13 @@ class WaveletBlock(nn.Module):
             tensorlist.append(tmp.unsqueeze(1))
 
         out = torch.cat(tensorlist, dim=1)
+#        out = torch.fft.rfftn(out, dim=self.dims, norm='ortho')
+#        out = self.dataset.from_helical(out)
+        out = self.batchnorm(out)  
+        out = self.actfun(out) 
+#        out = self.dataset.to_helical(out)
+#        out = torch.fft.irfftn(out, dim=self.dims, norm='ortho')
         
-        out = self.batchnorm(out)
-                
-        out = self.actfun(out) # apply activation function
-
         return out
                 
 
@@ -164,11 +168,10 @@ class ScalarWaveletBlock(nn.Module):
                                        level=self.num_levels)
                        
         # create structure of learnable multiplication coefficients
-        self.num_params = 0
-        params_list = []
+        params_list = nn.ParameterList([])
         for wavecoeff in wavecoeffs:
             if type(wavecoeff) == type(dict()):
-                params_tmp = dict()
+                params_dict = nn.ParameterDict({})
                 for wavecoeff_key in wavecoeff.keys():
                     if self.mode == 'all':
                         tmp = torch.rand_like(wavecoeff[wavecoeff_key],
@@ -178,14 +181,12 @@ class ScalarWaveletBlock(nn.Module):
                     elif self.mode == 'outer':
                         tmp = torch.rand(wavecoeff[wavecoeff_key].shape[-1],
                                          dtype=torch.float32)
-                    self.num_params += tmp.numel()
-                    params_tmp[wavecoeff_key] = nn.Parameter(
+                    params_dict[wavecoeff_key] = nn.Parameter(
                         tmp, requires_grad=True)
-                    nn.init.uniform_(params_tmp[wavecoeff_key])
-                params_dict = nn.ParameterDict(params_tmp)
+                    nn.init.uniform_(params_dict[wavecoeff_key])
                 params_list.append(params_dict)
             else:
-                params_tuple = []
+                params_tuple = nn.ParameterList([])
                 for wv in wavecoeff:
                     if self.mode == 'all':
                         tmp = torch.rand_like(wv,
@@ -194,14 +195,13 @@ class ScalarWaveletBlock(nn.Module):
                         tmp = torch.rand(1, dtype=torch.float32)
                     elif self.mode == 'outer':
                         tmp = torch.rand(wv.shape[-1], dtype=torch.float32)
-                    self.num_params += tmp.numel()
                     params_tmp = nn.Parameter(tmp, requires_grad=True)
                     nn.init.uniform_(params_tmp)
                     params_tuple.append(params_tmp)
-                params_tuple = nn.ParameterList(tuple(params_tuple))
+                params_tuple = nn.ParameterList(params_tuple)
                 params_list.append(params_tuple)
 
-        self.params_list = nn.ParameterList(params_list)
+        self.params_list = params_list
         
         return
     

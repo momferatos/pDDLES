@@ -19,7 +19,7 @@ import torch.distributed as dist
 from lib.datasets.Datasets import TurbDataset
 
 def plot_results(args, model, train_losses, test_losses,
-                 dataset, dataloader, scaler):
+                 dataset, dataloader):
     
     """Plot results
 
@@ -64,19 +64,24 @@ def plot_results(args, model, train_losses, test_losses,
         y = next(iter(dataloader)).to(args.device)
         # y = y.unsqueeze(0).unsqueeze(0)
         y = dataset.truncate(y)
-        X = dataset.LES_filter(y)
+        ymean = y.mean()
+        ystd = y.std()
 
-        X, y = scaler.transform(X, y, direction='forward')
+        X = dataset.LES_filter(y)
+        Xmean = X.mean()
+        Xstd = X.std()
+        X = (X - Xmean) / Xstd
         
      
         y_pred = model(X)
-
+        y_pred = y_pred * ystd + ymean
+        
         div = dataset.divergence(y_pred).item()
         print(f'maxdiv: {div}')
 
-        X, y = scaler.transform(X, y, direction='backward')
+        # X, y = scaler.transform(X, y, direction='backward')
         
-        _, y_pred = scaler.transform(X, y_pred, direction='backward')
+        # _, y_pred = scaler.transform(X, y_pred, direction='backward')
 
         filtered_X = dataset.LES_filter(X)
 
@@ -449,12 +454,13 @@ def spectrum(X, args):
 
 def plot_FourierNet(model, args):
     plt.figure(figsize=(15, 10))
-
+    plt.xscale('log')
     for param_tensor in model.state_dict():
         if 'alpha' in param_tensor:
             plt.plot(np.array(model.state_dict()[param_tensor].to('cpu')), label=f'{param_tensor}')
 
     plt.legend(loc='best')
+    
     plt.savefig(os.path.join(args.out, 'alphas.png'))
     return
 
@@ -560,4 +566,50 @@ def predict(model, prediction_filenames, args, prediction_dataset,
                                 xmf_filename, args)
                 num_file0 += 1
 
+    return
+
+def plot_histograms(dataloader, model, dataset, args):
+
+    plt.figure(figsize=(15, 10))
+    plt.yscale('log')
+    nbatches = len(dataloader)
+
+    y = next(iter(dataloader)).to(args.device)
+    # y = y.unsqueeze(0).unsqueeze(0)
+    y = dataset.truncate(y)
+    ymean = y.mean()
+    ystd = y.std()
+
+    X = dataset.LES_filter(y)
+    Xmean = X.mean()
+    Xstd = X.std()
+    X = (X - Xmean) / Xstd
+
+    y_pred = model(X).detach()
+    y_pred = y_pred * ystd + ymean
+    maxstep = int(args.n / 4)
+    
+    for step in range(1, maxstep):
+        color = (np.random.random(), np.random.random(), np.random.random())
+        shifts = 3 * [step] + 3 * [-step]
+        dims = 2 * [-3, -2, -1]
+        for yy, label, style in zip((y, y_pred), ('feature', 'prediction'), ('-.', '-')):
+            data = []
+            for shift, dim in zip(shifts, dims):
+                yyrolled = torch.roll(yy, shifts=shift, dims=dim)
+                diff = yy - yyrolled
+                vec = torch.zeros_like(diff)
+                vec[:, dim, :, :] = np.sign(step)
+                incr = torch.linalg.vecdot(vec, diff, dim=1)
+                incr = incr.flatten()
+                data.append(incr)
+            data = torch.cat(data)
+            yp, xp = torch.histogram(data, bins=args.n, density=True)
+            xp = xp.to('cpu').numpy()
+            xp = 0.5 *(xp[1:] + xp[:-1])
+            yp = yp.to('cpu').numpy()
+            plt.plot(xp, yp, style, color=color, label=f'{label}: incr= {step}')
+    plt.legend(loc='best')
+    plt.savefig(os.path.join(args.out, 'hist.png'))
+            
     return

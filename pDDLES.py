@@ -28,7 +28,7 @@ from lib.utils.distributed import init_dist_node, init_dist_gpu, get_shared_fold
 import submitit, random, sys
 from pathlib import Path
 from lib.utils.parameters import parameters
-from lib.post_process.post_process import plot_results, plot_FourierNet
+from lib.post_process.post_process import plot_results, plot_FourierNet, plot_histograms
 from lib.datasets.Scaler import get_scaler
 from lib.datasets.Sampler import TurbSampler
 
@@ -251,10 +251,11 @@ def main():
         args.partition = 'gpu'
         slurm_additional_parameters = {'gres': f'gpu:{args.tasks_per_node}', 'gpu-bind': f'single:1', 'time': f'{args.timeout}'}    
     else:
+        args.tasks_per_node = 32
         args.partition = 'cpu'
         slurm_additional_parameters = {'time': f'{args.timeout}'}
     
-    args.port = random.randint(49152,65535)
+    args.port = 7778
     
 
     args.dimensions = 3
@@ -281,7 +282,7 @@ def main():
             slurm_partition=args.partition,
             slurm_account=args.account,
             slurm_qos=args.qos,
-            slurm_mem='256GB',
+            slurm_mem='400GB',
             slurm_additional_parameters=slurm_additional_parameters
         )
 
@@ -303,9 +304,9 @@ def train(gpu, args):
         if args.slurm:
             args.device = 'cuda:0'
         else:
-            args.device = f'cuda:{gpu}'
+            args.device = torch.device('cuda', args.rank)
     else:
-        args.device = args.rank
+        args.device = torch.device('cpu', args.rank)
             
 #    torch.set_default_device(args.device)
     
@@ -338,20 +339,27 @@ def train(gpu, args):
         args.num_coeffs = int(math.sqrt(args.n ** 3))
         
     num_files = len(filenames)
-    ntrain = int(0.8 * num_files)
+    ntrain_test = int(0.8 * num_files)
+    ntrain = int(0.8 * ntrain_test)
     g = torch.Generator()
     g.manual_seed(777)
-    indices = torch.randperm(num_files, generator=g).tolist()  # type: ignore[arg-type]
+    indices = torch.randperm(num_files, generator=g).tolist()  
     train_filenames = []
     for i in range(ntrain):
         train_filenames.append(filenames[indices[i]])
 
     test_filenames = []
-    for i in range(ntrain, num_files):
+    for i in range(ntrain, ntrain_test):
         test_filenames.append(filenames[indices[i]])
+
+    predict_filenames = []
+    for i in range(ntrain_test, num_files):
+        predict_filenames.append(filenames[indices[i]])
         
     train_dataset = get_dataset(train_filenames, args)
     test_dataset = get_dataset(test_filenames, args)
+    predict_dataset = get_dataset(predict_filenames, args)
+
    
     #train_sampler = DistributedSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
     #test_sampler = DistributedSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
@@ -367,8 +375,8 @@ def train(gpu, args):
                             pin_memory = True,
                             drop_last = args.drop_last
                             )
-    scaler_loader = DataLoader(dataset=train_dataset,
-                            batch_size=args.batch_per_task, 
+    predict_loader = DataLoader(dataset=predict_dataset,
+                                batch_size=len(predict_dataset),
                             num_workers= args.workers,
                             pin_memory = True,
                             drop_last = args.drop_last,
@@ -396,17 +404,21 @@ def train(gpu, args):
     print()
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
     print()
-    
-    model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
+
+    if args.dev == 'gpu':
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
 
     device_ids = None
     if args.slurm:
-        device_ids = [0]
+        if args.dev == 'gpu':
+            device_ids = [0]
+        else:
+            device_ids = None
     else:
         if args.dev == 'gpu':
             device_ids = [gpu]
         else:
-            device_ids = [args.rank]
+            device_ids = [args.device]
         
     model = model.to(args.device)
         
@@ -416,7 +428,7 @@ def train(gpu, args):
         
     model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=find_unused_parameters)
     # model = torch.compile(model)
-    
+
     # === LOSS === #
     from lib.core.loss import get_loss
     loss = get_loss(args)
@@ -425,16 +437,17 @@ def train(gpu, args):
     from lib.core.optimizer import get_optimizer
     optimizer = get_optimizer(model, args)
 
-    scaler = get_scaler(scaler_loader, args)
-    scaler.fit()
+    #scaler = get_scaler(scaler_loader, args)
+    #scaler.fit()
+    
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
-    train_losses, test_losses = Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset, scaler).fit()
+    train_losses, test_losses = Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset).fit()
 
 
     
-    plot_results(args, model, train_losses, test_losses, train_dataset, test_loader, scaler)
-        
+    plot_results(args, model, train_losses, test_losses, train_dataset, predict_loader)
+    plot_histograms(predict_loader, model, train_dataset, args)
     if args.arch == 'FourierNet':
         plot_FourierNet(model, args)
     

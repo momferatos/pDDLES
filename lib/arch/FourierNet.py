@@ -124,7 +124,7 @@ class FourierBlock(nn.Module):
         out = self.actfun(out)
         out = self.dataset.to_helical(out)
             
-        return out
+        return out + x
 
 def get_model(args):
 
