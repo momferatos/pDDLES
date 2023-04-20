@@ -574,41 +574,50 @@ def plot_histograms(dataloader, model, dataset, args):
     plt.yscale('log')
     nbatches = len(dataloader)
 
-    y = next(iter(dataloader)).to(args.device)
-    # y = y.unsqueeze(0).unsqueeze(0)
-    y = dataset.truncate(y)
-    ymean = y.mean()
-    ystd = y.std()
+    with torch.no_grad():
+        y = next(iter(dataloader)).to(args.device)
+        # y = y.unsqueeze(0).unsqueeze(0)
+        y = dataset.truncate(y)
+        ymean = y.mean()
+        ystd = y.std()
 
-    X = dataset.LES_filter(y)
-    Xmean = X.mean()
-    Xstd = X.std()
-    X = (X - Xmean) / Xstd
+        X = dataset.LES_filter(y)
+        Xmean = X.mean()
+        Xstd = X.std()
+        X = (X - Xmean) / Xstd
 
-    y_pred = model(X).detach()
-    y_pred = y_pred * ystd + ymean
-    maxstep = int(args.n / 4)
-    
-    for step in range(1, maxstep):
-        color = (np.random.random(), np.random.random(), np.random.random())
-        shifts = 3 * [step] + 3 * [-step]
-        dims = 2 * [-3, -2, -1]
-        for yy, label, style in zip((y, y_pred), ('feature', 'prediction'), ('-.', '-')):
-            data = []
-            for shift, dim in zip(shifts, dims):
-                yyrolled = torch.roll(yy, shifts=shift, dims=dim)
-                diff = yy - yyrolled
-                vec = torch.zeros_like(diff)
-                vec[:, dim, :, :] = np.sign(step)
-                incr = torch.linalg.vecdot(vec, diff, dim=1)
-                incr = incr.flatten()
-                data.append(incr)
-            data = torch.cat(data)
-            yp, xp = torch.histogram(data, bins=args.n, density=True)
-            xp = xp.to('cpu').numpy()
-            xp = 0.5 *(xp[1:] + xp[:-1])
-            yp = yp.to('cpu').numpy()
-            plt.plot(xp, yp, style, color=color, label=f'{label}: incr= {step}')
+        y_pred = model(X)
+        y_pred = y_pred * ystd + ymean
+        maxstep = int(args.n / 4)
+
+        for step in range(1, maxstep):
+            color = (np.random.random(), np.random.random(), np.random.random())
+            shifts = 3 * [step] + 3 * [-step]
+            dims = 2 * [-3, -2, -1]
+            for yy, var, style in zip((y, y_pred), ('feature', 'prediction'), ('-.', '-')):
+                data = []
+                for shift, dim in zip(shifts, dims):
+                    yyrolled = torch.roll(yy, shifts=shift, dims=dim)
+                    diff = yy - yyrolled
+                    vec = torch.zeros_like(diff)
+                    vec[:, dim, :, :] = np.sign(step)
+                    incr = torch.linalg.vecdot(vec, diff, dim=1)
+                    incr = incr.flatten()
+                    data.append(incr)
+                data = torch.cat(data)
+                data = data.to('cpu')
+                yp, xp = torch.histogram(data, bins=args.n, density=True)
+                xp = xp.to('cpu').numpy()
+                xp = 0.5 *(xp[1:] + xp[:-1])
+                yp = yp.to('cpu').numpy()
+                
+                if var == 'feature':
+                    label = f'{var}: incr= {step}'
+                else:
+                    label = None
+                    
+                plt.plot(xp, yp, style, color=color, label=label)
+                
     plt.legend(loc='best')
     plt.savefig(os.path.join(args.out, 'hist.png'))
             

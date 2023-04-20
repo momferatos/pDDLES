@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import torch
+import torch.distributed as dist
 from lib.utils.file import checkdir
 from lib.utils.tensorboard import get_writer, TBWriter
 from lib.core.scheduler import cosine_scheduler, constant_scheduler
@@ -26,11 +27,12 @@ class dummy:
     
 class Trainer:
 
-    def __init__(self, args, train_loader, test_loader, model, loss, optimizer, dataset):
+    def __init__(self, args, train_loader, test_loader, valid_loader, model, loss, optimizer, dataset):
 
         self.args = args
         self.train_gen = train_loader
         self.test_gen = test_loader
+        self.val_gen = valid_loader
         self.model = model
         self.loss = loss
         self.optimizer = optimizer
@@ -38,6 +40,7 @@ class Trainer:
         self.fp16_scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
         self.test_losses = []
         self.train_losses = []
+        self.val_loss = 0.0
         self.device = args.device
 #        self.scaler.fit()
         
@@ -56,8 +59,8 @@ class Trainer:
         metric_logger = MetricLogger(args, delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
         
-        test_div = 0.0
-        train_div = 0.0
+        test_div = torch.Tensor([0.0])
+        train_div = torch.Tensor([0.0])
         train_loss = 0.0
         test_loss = 0.0
         for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
@@ -97,7 +100,8 @@ class Trainer:
                 
                 train_loss += loss
                 div = self.dataset.divergence(preds)
-                train_div = max(div, train_div)
+                train_div = torch.max(div, train_div)
+                # dist.all_reduce(train_div, op=dist.ReduceOp.MAX)
 
             # Sanity Check
             if not math.isfinite(loss.item()):
@@ -170,8 +174,8 @@ class Trainer:
                     
                     loss = self.loss(preds, labels)
                     test_loss += loss
-                    test_div = max(div, test_div)
-
+                    test_div = torch.max(div, test_div)
+                    # dist.all_reduce(test_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):
                     print("Test loss is {}, stopping training".format(loss.item()), force=True)
@@ -190,8 +194,8 @@ class Trainer:
             test_metric_logger.synchronize_between_processes()
             print("Averaged stats:", test_metric_logger)
 
-            self.test_losses.append(test_loss.item() / len(self.test_gen))
-            self.train_losses.append(train_loss.item() / len(self.train_gen))
+            self.test_losses.append(test_metric_logger.meters['test_loss'].value)
+            self.train_losses.append(metric_logger.meters['train_loss'].value)
 
     def fit(self):
 
@@ -217,10 +221,73 @@ class Trainer:
             if self.args.main and epoch%self.args.save_every == 0:
                 self.save(epoch)
 
-        
+        print('Calculating validation loss...')
+        with torch.no_grad():
+            val_loss = 0.0
+            val_div = torch.Tensor([0.0])
+            header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
+            val_metric_logger = MetricLogger(self.args, delimiter="  ")
+            for it, input_data in enumerate(val_metric_logger.log_every(self.val_gen, 10, self.args, header)):
+
+                # === Global Iteration === #
+                it = len(self.train_gen) * epoch + it
+
+                # === Inputs === #
+                
+                if self.args.device == 'gpu':
+                    input_data = input_data.cuda(non_blocking=True)
+                    autocast = torch.cuda.amp.autocast(self.args.fp16)
+                else:
+                    autocast = torch.autocast(device_type='cpu')
+                    
+                # === Forward pass === #
+                with autocast:
+                    y = input_data.to(self.device)
+                    ymean = y.mean()
+                    ystd = y.std()
+                    
+                    X = self.dataset.LES_filter(y)
+                    Xmean = X.mean()
+                    Xstd = X.std()
+                    
+                    X = (X - Xmean) / Xstd
+                    # normalize
+                    #X, y = self.scaler.transform(X, y, direction='forward')
+
+                
+                    preds = self.model(X)
+                        
+                    div = self.dataset.divergence(preds)
+                    
+                    labels = (y - ymean) / ystd
+                    
+                    loss = self.loss(preds, labels)
+                    val_loss += loss
+                    val_div = torch.max(div, val_div)
+                    # dist.all_reduce(val_div, op=dist.ReduceOp.MAX)
+                # Sanity Check
+                if not math.isfinite(loss.item()):
+                    print("Val loss is {}, stopping training".format(loss.item()), force=True)
+                    sys.exit(1)
+
+                # === Logging === #
+                if self.args.device == 'gpu':
+                    torch.cuda.synchronize()
+                val_metric_logger.update(val_loss=loss.item())
+                val_metric_logger.update(val_div=div.item())
+
+                if self.args.main:
+                    self.loss_writer(val_metric_logger.meters['val_loss'].value, it)
+                    self.loss_writer(val_metric_logger.meters['val_div'].value, it)
+
+            val_metric_logger.synchronize_between_processes()
+            print("Averaged stats:", val_metric_logger)
+            self.val_loss = val_metric_logger.meters['val_loss'].value
+            
         print('Done.')
         
-        return self.train_losses, self.test_losses
+        return self.train_losses, self.test_losses, self.val_loss
+
     
     def load_if_available(self):
 
@@ -229,7 +296,7 @@ class Trainer:
         if len(ckpts) >0:
             ckpt = torch.load(ckpts[-1], map_location='cpu')
             self.start_epoch = ckpt['epoch']
-            self.model.load_state_dict(ckpt['model'])
+            self.model.module.load_state_dict(ckpt['model'])
             self.optimizer.load_state_dict(ckpt['optimizer'])
             if self.args.fp16: self.fp16_scaler.load_state_dict(ckpt['fp16_scaler'])
             print("Loaded ckpt: ", ckpts[-1])

@@ -43,6 +43,10 @@ def parse_args():
 
     # === PATHS === #
 
+    parser.add_argument('-mem', type=str, default='400GB')
+    
+    parser.add_argument('-predict', action='store_true')
+    
     parser.add_argument('-copy', action='store_false')
 
     parser.add_argument('-drop_last', action='store_true')
@@ -112,7 +116,7 @@ def parse_args():
     # === SLURM === #
     parser.add_argument('-slurm', action='store_true',
                                             help='Submit with slurm')
-    parser.add_argument('-tasks_per_node', type=int, default = 4,
+    parser.add_argument('-tasks_per_node', type=int, default=None,
                                             help='num of gpus per node')
     parser.add_argument('-nnodes', type=int, default = 1,
                                             help='number of nodes')
@@ -196,14 +200,10 @@ def parse_args():
     parser.add_argument('-actfun',
                         help='Activation function to use:'
                         'Tanh, Sigmoid or ReLU',
-                        default='Tanh',
+                        default='ReLU',
                         type=str)
     
-    parser.add_argument('-prediction_mode',
-                        help='Prediction mode:'
-                        '\'large to all\' or \'large_to_small\'',
-                        default='large to all',
-                        type=str)
+    
     parser.add_argument('-wavelet_type',
                         help='Pywavelet wavelet type to use.',
                         default='db4',
@@ -215,7 +215,15 @@ def parse_args():
 
     args = parser.parse_args()
 
-    args.actfun = torch.nn.ReLU()
+    args.actfun = eval(f'torch.nn.{args.actfun}()')
+    # if args.actfun == 'ReLU':
+    #     args.actfun = torch.nn.ReLU()
+    # elif args.actfun == 'LeakyReLU':
+    #     args.actfun = torch.nn.LeakyReLU()
+    # elif args.actfun == 'Tanh':
+    #     args.actfun = torch.nn.Tanh()
+    # elif args.actfun == 'Sigmoid':
+    #     args.actfun = torch.nn.Sigmoid()
     
     # === Read CFG File === #
     if args.cfg:
@@ -247,11 +255,13 @@ def main():
     args, parser = parse_args()
     
     if args.dev == 'gpu':
-        args.tasks_per_node = 4
+        if not args.tasks_per_node:
+            args.tasks_per_node = 4
         args.partition = 'gpu'
         slurm_additional_parameters = {'gres': f'gpu:{args.tasks_per_node}', 'gpu-bind': f'single:1', 'time': f'{args.timeout}'}    
     else:
-        args.tasks_per_node = 32
+        if not args.tasks_per_node:
+            args.tasks_per_node = 16
         args.partition = 'cpu'
         slurm_additional_parameters = {'time': f'{args.timeout}'}
     
@@ -282,7 +292,7 @@ def main():
             slurm_partition=args.partition,
             slurm_account=args.account,
             slurm_qos=args.qos,
-            slurm_mem='400GB',
+            slurm_mem=args.mem,
             slurm_additional_parameters=slurm_additional_parameters
         )
 
@@ -352,13 +362,13 @@ def train(gpu, args):
     for i in range(ntrain, ntrain_test):
         test_filenames.append(filenames[indices[i]])
 
-    predict_filenames = []
+    valid_filenames = []
     for i in range(ntrain_test, num_files):
-        predict_filenames.append(filenames[indices[i]])
+        valid_filenames.append(filenames[indices[i]])
         
     train_dataset = get_dataset(train_filenames, args)
     test_dataset = get_dataset(test_filenames, args)
-    predict_dataset = get_dataset(predict_filenames, args)
+    valid_dataset = get_dataset(valid_filenames, args)
 
    
     #train_sampler = DistributedSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
@@ -366,7 +376,7 @@ def train(gpu, args):
 
     train_sampler = TurbSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
     test_sampler = TurbSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
-
+    
 
     train_loader = DataLoader(dataset=train_dataset, 
                             sampler = train_sampler,
@@ -374,13 +384,6 @@ def train(gpu, args):
                             num_workers= args.workers,
                             pin_memory = True,
                             drop_last = args.drop_last
-                            )
-    predict_loader = DataLoader(dataset=predict_dataset,
-                                batch_size=len(predict_dataset),
-                            num_workers= args.workers,
-                            pin_memory = True,
-                            drop_last = args.drop_last,
-                            shuffle=False   
                             )
 
     test_loader = DataLoader(dataset=test_dataset, 
@@ -390,6 +393,15 @@ def train(gpu, args):
                             pin_memory = True,
                             drop_last = args.drop_last
                             )
+
+    valid_loader = DataLoader(dataset=valid_dataset,
+                                batch_size=args.batch_per_task,
+                                num_workers= args.workers,
+                                pin_memory = True,
+                                drop_last = args.drop_last,
+                                shuffle=False   
+    )
+
     print(f"Data loaded")
     
 
@@ -428,7 +440,7 @@ def train(gpu, args):
         
     model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=find_unused_parameters)
     # model = torch.compile(model)
-
+    
     # === LOSS === #
     from lib.core.loss import get_loss
     loss = get_loss(args)
@@ -442,16 +454,34 @@ def train(gpu, args):
     
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
-    train_losses, test_losses = Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset).fit()
 
+    if args.predict:
+        Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset).load_if_available()
+        
+        print(f"Model loaded")
+        
+        train_losses = [[0., 0.], [1., 1.]]
+        test_losses = [[0., 0.], [1., 1.]]
+    else:
 
-    
-    plot_results(args, model, train_losses, test_losses, train_dataset, predict_loader)
-    plot_histograms(predict_loader, model, train_dataset, args)
+        print(f"Model loaded")
+        
+        train_losses, test_losses, valid_loss = Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset).fit()
+
+        min_test_loss = np.min(np.array(test_losses))
+        min_epoch = np.argmin(np.array(test_losses))
+        min_train_loss = train_losses[min_epoch]
+        print(f'Minimum test loss {min_test_loss} @ epoch {min_epoch}, training loss = {min_train_loss},  validation loss = {valid_loss}')
+        with open(os.path.join(args.out, 'losses.dat'), 'w') as f:
+            f.write(f'{args.alpha} {min_epoch} {min_test_loss} {min_train_loss} {valid_loss}')
+
+    plot_histograms(valid_loader, model, train_dataset, args)
+    plot_results(args, model, train_losses, test_losses, train_dataset, valid_loader)
     if args.arch == 'FourierNet':
         plot_FourierNet(model, args)
     
     return
+
 
 if __name__ == "__main__":
     main()

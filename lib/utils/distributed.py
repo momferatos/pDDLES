@@ -127,6 +127,8 @@ def init_dist_gpu(gpu, args):
 
     fix_random_seeds()
 
+    cudnn.Benchmark = True
+    
     dist.barrier()
 
     args.main = (args.rank == 0)
@@ -237,8 +239,14 @@ class MetricLogger(object):
     def __str__(self):
         loss_str = []
         for name, meter in self.meters.items():
+            
+            if isinstance(meter, float):
+                string = f'{meter:.5e}'
+            else:
+                string = str(meter)
+                
             loss_str.append(
-                "{}: {}".format(name, str(meter))
+                "{}: {}".format(name, string)
             )
         return self.delimiter.join(loss_str)
 

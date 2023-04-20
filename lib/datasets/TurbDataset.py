@@ -326,7 +326,7 @@ class TurbDataset(Dataset):
         fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
         div = torch.linalg.vecdot(1j * k, torch.conj_physical(fX), dim=1)
         div = torch.fft.irfftn(div, dim=self.dims, norm='ortho')
-        div = div.abs().max()
+        div = torch.mean(torch.abs(div))
         
         return div
 
@@ -429,6 +429,8 @@ class TurbDataset(Dataset):
         return
 
     def load(self, indices):
+        if self.args.noload:
+            return
         self.indices = indices
         nfiles = len(self.indices)
         for nfile, idx in enumerate(self.indices):
