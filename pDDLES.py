@@ -43,7 +43,9 @@ def parse_args():
 
     # === PATHS === #
 
-    parser.add_argument('-mem', type=str, default='400GB')
+    parser.add_argument('-prefix', type=str, default='')
+    
+    parser.add_argument('-mem', type=str, default='0')
     
     parser.add_argument('-predict', action='store_true')
     
@@ -274,7 +276,7 @@ def main():
     args.conv = (nn.Conv2d if args.dimensions == 2 else nn.Conv3d)
     args.batchnorm = (nn.BatchNorm2d if args.dimensions == 2 else nn.BatchNorm3d)
 
-    args.output_dir = get_shared_folder() / f'{args.model}'
+    args.output_dir = get_shared_folder(args) / f'{args.model}'
     args.out = args.output_dir
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -415,6 +417,8 @@ def train(gpu, args):
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print()
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
+    if args.arch == FourierNet:
+        print(f'{args.num_coeffs} of spectral trainable coefficients per block.')
     print()
 
     if args.dev == 'gpu':
