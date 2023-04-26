@@ -59,8 +59,8 @@ class Trainer:
         metric_logger = MetricLogger(args, delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
         
-        test_div = torch.Tensor([0.0])
-        train_div = torch.Tensor([0.0])
+        test_div = 0.0
+        train_div = 0.0
         train_loss = 0.0
         test_loss = 0.0
         for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
@@ -100,7 +100,7 @@ class Trainer:
                 
                 train_loss += loss
                 div = self.dataset.divergence(preds)
-                train_div = torch.max(div, train_div)
+                train_div = max(div, train_div)
                 # dist.all_reduce(train_div, op=dist.ReduceOp.MAX)
 
             # Sanity Check
@@ -174,7 +174,7 @@ class Trainer:
                     
                     loss = self.loss(preds, labels)
                     test_loss += loss
-                    test_div = torch.max(div, test_div)
+                    test_div = max(div, test_div)
                     # dist.all_reduce(test_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):
@@ -224,7 +224,7 @@ class Trainer:
         print('Calculating validation loss...')
         with torch.no_grad():
             val_loss = 0.0
-            val_div = torch.Tensor([0.0])
+            val_div = 0.0
             header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
             val_metric_logger = MetricLogger(self.args, delimiter="  ")
             for it, input_data in enumerate(val_metric_logger.log_every(self.val_gen, 10, self.args, header)):
@@ -263,7 +263,7 @@ class Trainer:
                     
                     loss = self.loss(preds, labels)
                     val_loss += loss
-                    val_div = torch.max(div, val_div)
+                    val_div = max(div, val_div)
                     # dist.all_reduce(val_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):

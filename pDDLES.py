@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Copyright (c) Ramy Mounir.
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -417,8 +418,8 @@ def train(gpu, args):
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print()
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
-    if args.arch == FourierNet:
-        print(f'{args.num_coeffs} of spectral trainable coefficients per block.')
+    if args.arch == 'FourierNet':
+        print(f'{args.num_coeffs} trainable spectral trainable coefficients per block.')
     print()
 
     if args.dev == 'gpu':
