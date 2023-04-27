@@ -31,8 +31,6 @@ class WaveletNet(nn.Module):
         super(WaveletNet, self).__init__()
 
         self.args = args
-        self.num_levels = (args.num_levels if args.num_levels != 0
-                           else int(np.log2(args.n)))
         # build pipeline of num_blocks WaveletBlocks
         modulelist = nn.ModuleList([])
         for _ in range(self.args.num_blocks):
@@ -145,7 +143,8 @@ class ScalarWaveletBlock(nn.Module):
         self.wavelet = pywt.Wavelet(self.wavelet_type) # define wavelet
         self.n = self.args.n # define resolution of the data square/cube
         # define number of levels of the wavelet transform
-        self.num_levels = args.num_levels
+        self.num_levels = (args.num_levels if args.num_levels != 0
+                           else int(np.log2(args.n)))
         # define wavelet coeffient multiplication mode
         self.mode = args.wavelet_mode 
         self.dummy_param = nn.Parameter(torch.empty(0), requires_grad=True)

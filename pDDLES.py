@@ -256,6 +256,11 @@ class SLURM_Trainer(object):
 def main():
     
     args, parser = parse_args()
+
+    cmdline = ''
+    for arg in sys.argv:
+        cmdline = cmdline + ' ' + arg
+    args.cmdline = cmdline
     
     if args.dev == 'gpu':
         if not args.tasks_per_node:
@@ -313,6 +318,10 @@ def main():
 
 def train(gpu, args):
 
+    print()
+    print(f'Full command line: {args.cmdline}')
+    print()
+    
     if args.dev == 'gpu':
         if args.slurm:
             args.device = 'cuda:0'
@@ -326,7 +335,7 @@ def train(gpu, args):
     # === SET ENV === #
     
     init_dist_gpu(gpu, args)
-    
+          
     ngpus = torch.cuda.device_count()
     print(f'Found {ngpus} visible GPU(s):')
     for i in range(ngpus):
@@ -460,7 +469,7 @@ def train(gpu, args):
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
     
     if args.predict:
-        Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset).load_if_available()
+        Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset).load_if_available()
         
         print(f"Model loaded")
         

@@ -570,7 +570,7 @@ def predict(model, prediction_filenames, args, prediction_dataset,
 
 def plot_histograms(dataloader, model, dataset, args):
 
-    fig, axs = plt.subplots(1, 2, figsize=(15, 10))
+    fig, axs = plt.subplots(2, 1, figsize=(15, 10))
     axs[0].set_yscale('log')
     axs[1].set_yscale('log')
     nbatches = len(dataloader)
