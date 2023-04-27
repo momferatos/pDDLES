@@ -632,6 +632,7 @@ def plot_histograms(dataloader, model, dataset, args):
     for data, label, style in zip((y, y_pred), ('Target', 'Prediction'), ('-', '--')):
         lgrads = dataset.longitudinal_gradients(data)
         std = lgrads.std().to('cpu').item()
+        lgrads = lgrads.to('cpu')
         yp, xp = torch.histogram(lgrads, bins=args.n, density=True)
         xp = xp.to('cpu').numpy()
         xp = 0.5 *(xp[1:] + xp[:-1])
