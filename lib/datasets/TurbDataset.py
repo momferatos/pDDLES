@@ -284,7 +284,7 @@ class TurbDataset(Dataset):
               
         return
     
-    def to_helical(self, u):
+    def to_helical(self, u, outdomain='physical'):
     
         fu = torch.fft.rfftn(u, dim=self.dims, norm='ortho') 
         
@@ -295,15 +295,26 @@ class TurbDataset(Dataset):
         fuplus = torch.einsum('bi...,bi...->b...', fu, torch.conj_physical(hplus)).unsqueeze(1)
         fuminus = torch.einsum('bi...,bi...->b...', fu, torch.conj_physical(hminus)).unsqueeze(1)
 
-        out = torch.cat((fuplus, fuminus), dim=1)
+        if outdomain == 'physical':
+            uplus = torch.fft.irfftn(fuplus, dim=self.dims, norm='ortho')
+            uminus = torch.fft.irfftn(fuminus, dim=self.dims, norm='ortho')
+            out = torch.cat((uplus, uminus), dim=1)
+        elif outdomain == 'fourier':    
+            out = torch.cat((fuplus, fuminus), dim=1)
         
         return out
 
 
-    def from_helical(self, fupm):
-        
-        fuplus = fupm[:, 0, :, :, :].unsqueeze(1)
-        fuminus = fupm[:, 1, :, :, :].unsqueeze(1)
+    def from_helical(self, fupm, indomain='physical'):
+
+        if indomain == 'physical':
+            uplus = fupm[:, 0, :, :, :].unsqueeze(1)
+            uminus = fupm[:, 1, :, :, :].unsqueeze(1)
+            fuplus = torch.fft.rfftn(uplus, dim=self.dims, norm='ortho')
+            fuminus = torch.fft.rfftn(uminus, dim=self.dims, norm='ortho')
+        elif indomain == 'fourier':
+            fuplus = fupm[:, 0, :, :, :].unsqueeze(1)
+            fuminus = fupm[:, 1, :, :, :].unsqueeze(1)
                 
         hplus = self.hplus.unsqueeze(0).expand(fupm.shape[0], -1, -1, -1, -1)
         
@@ -329,6 +340,20 @@ class TurbDataset(Dataset):
         div = torch.mean(torch.abs(div))
         
         return div
+
+    def longitudinal_gradients(self, X):
+
+        k, _ = self.wave_vectors(self.args.n)
+
+        k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
+        dims = (-3, -2, -1)
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
+        lgrads = -1j * k * fX
+        lgrads= torch.fft.irfftn(lgrads, dim=self.dims, norm='ortho')
+
+        lgrads = lgrads.flatten()
+        
+        return lgrads
 
     def vorticity(self, X):
         

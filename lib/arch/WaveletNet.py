@@ -53,9 +53,7 @@ class WaveletNet(nn.Module):
     def forward(self, x):
 
         out = self.dataset.to_helical(x)
-        out = torch.fft.irfftn(out, dim=self.dims, norm='ortho')
-        out = self.waveletnet(x)
-        out = torch.fft.rfftn(out, dim=self.dims, norm='ortho')
+        out = self.waveletnet(out)
         out = self.dataset.from_helical(out)
         dims = out.shape
         out = out.view(-1, 1)
@@ -95,7 +93,11 @@ class WaveletBlock(nn.Module):
         for nummod in range(self.nummods):
             self.modlist.append(ScalarWaveletBlock(self.args))
 
-        self.batchnorm = torch.nn.BatchNorm3d(num_features=2)
+        if args.scalar:
+            self.batchnorm = torch.nn.BatchNorm3d(num_features=1)
+        else:
+            self.batchnorm = torch.nn.BatchNorm3d(num_features=3)
+            
         self.actfun = args.actfun
         
         return
@@ -111,14 +113,12 @@ class WaveletBlock(nn.Module):
             tensorlist.append(tmp.unsqueeze(1))
 
         out = torch.cat(tensorlist, dim=1)
-#        out = torch.fft.rfftn(out, dim=self.dims, norm='ortho')
-#        out = self.dataset.from_helical(out)
+        out = self.dataset.from_helical(out)
         out = self.batchnorm(out)  
         out = self.actfun(out) 
-#        out = self.dataset.to_helical(out)
-#        out = torch.fft.irfftn(out, dim=self.dims, norm='ortho')
-        
-        return out
+        out = self.dataset.to_helical(out)
+         
+        return out + x
                 
 
 class ScalarWaveletBlock(nn.Module):

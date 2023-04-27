@@ -353,7 +353,7 @@ def train(gpu, args):
         
     num_files = len(filenames)
     ntrain_test = int(0.8 * num_files)
-    ntrain = int(0.8 * ntrain_test)
+    ntrain = int(0.6 * num_files)
     g = torch.Generator()
     g.manual_seed(777)
     indices = torch.randperm(num_files, generator=g).tolist()  
@@ -420,7 +420,6 @@ def train(gpu, args):
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
     if args.arch == 'FourierNet':
         print(f'{args.num_coeffs} trainable spectral trainable coefficients per block.')
-    print()
 
     if args.dev == 'gpu':
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
@@ -459,7 +458,7 @@ def train(gpu, args):
     
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
-
+    
     if args.predict:
         Trainer(args, train_loader, test_loader, model, loss, optimizer, train_dataset).load_if_available()
         

@@ -99,7 +99,7 @@ def plot_results(args, model, train_losses, test_losses,
 
         fig, axs = plt.subplots(3, 3, figsize=(15, 10))
 
-        aux = batch_to_numpy(y, dataset)
+        aux = batch_to_numpy(X, dataset)
         axs[0, 0].imshow(aux[-1], cmap=cmap)
         title = 'Feature X'
         axs[0, 0].set_title(title)
@@ -570,8 +570,9 @@ def predict(model, prediction_filenames, args, prediction_dataset,
 
 def plot_histograms(dataloader, model, dataset, args):
 
-    plt.figure(figsize=(15, 10))
-    plt.yscale('log')
+    fig, axs = plt.subplots(1, 2, figsize=(15, 10))
+    axs[0].set_yscale('log')
+    axs[1].set_yscale('log')
     nbatches = len(dataloader)
 
     with torch.no_grad():
@@ -588,13 +589,15 @@ def plot_histograms(dataloader, model, dataset, args):
 
         y_pred = model(X)
         y_pred = y_pred * ystd + ymean
-        maxstep = int(args.n / 4)
+        maxstep = int(np.log2(args.n))
 
-        for step in range(1, maxstep):
-            color = (np.random.random(), np.random.random(), np.random.random())
+        colors = ('red', 'green', 'blue', 'cyan', 'magenta', 'orange', 'purple', 'pink', 'yellow', 'gray', 'gold')
+        for istep in range(0, maxstep):
+            step = 2 ** istep
+            color = colors[istep] 
             shifts = 3 * [step] + 3 * [-step]
             dims = 2 * [-3, -2, -1]
-            for yy, var, style in zip((y, y_pred), ('feature', 'prediction'), ('-.', '-')):
+            for yy, var, style in zip((y, y_pred), ('Target', 'Prediction'), ('-', '--')):
                 data = []
                 for shift, dim in zip(shifts, dims):
                     yyrolled = torch.roll(yy, shifts=shift, dims=dim)
@@ -605,20 +608,39 @@ def plot_histograms(dataloader, model, dataset, args):
                     incr = incr.flatten()
                     data.append(incr)
                 data = torch.cat(data)
+                std = data.std().to('cpu').item()
                 data = data.to('cpu')
                 yp, xp = torch.histogram(data, bins=args.n, density=True)
                 xp = xp.to('cpu').numpy()
                 xp = 0.5 *(xp[1:] + xp[:-1])
                 yp = yp.to('cpu').numpy()
                 
-                if var == 'feature':
+                if var == 'Target':
                     label = f'{var}: incr= {step}'
                 else:
                     label = None
-                    
-                plt.plot(xp, yp, style, color=color, label=label)
+                   
+                axs[0].plot(xp / std, yp * std , style, color=color, label=label)
                 
-    plt.legend(loc='best')
+    axs[0].set_title('Longitudinal velocity increment PDFs')
+    axs[0].set_ylabel('$\sigma_{\delta u^L} P(\delta u^L)$')
+    axs[0].set_xlabel('$\delta u_L / \sigma_{\delta u^L}$')
+    xp = xp / std
+    axs[0].plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2), color='black', label='Gaussian')
+    axs[0].legend(loc='best')
+
+    for data, label, style in zip((y, y_pred), ('Target', 'Prediction'), ('-', '--')):
+        lgrads = dataset.longitudinal_gradients(data)
+        std = lgrads.std().to('cpu').item()
+        yp, xp = torch.histogram(lgrads, bins=args.n, density=True)
+        xp = xp.to('cpu').numpy()
+        xp = 0.5 *(xp[1:] + xp[:-1])
+        yp = yp.to('cpu').numpy()
+        axs[1].plot(xp / std, yp * std , style, color='black', label=label)
+        axs[1].set_title('Longitudinal velocity gradient PDFs')
+        axs[1].set_ylabel('$\sigma P(\partial u / \partial x)$')
+        axs[1].set_xlabel('$(\partial u / \partial x)/\sigma$')
+        axs[1].legend(loc='best')
     plt.savefig(os.path.join(args.out, 'hist.png'))
-            
+    
     return

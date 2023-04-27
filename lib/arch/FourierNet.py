@@ -41,9 +41,9 @@ class FourierNet(nn.Module):
 
     def forward(self, x):
         
-        out = self.dataset.to_helical(x)
+        out = self.dataset.to_helical(x, outdomain='fourier')
         out = self.fouriernet(out)
-        out = self.dataset.from_helical(out)
+        out = self.dataset.from_helical(out, indomain='fourier')
         dims = out.shape
         out = out.view(-1, 1)
         out = self.linear(out)
@@ -119,10 +119,10 @@ class FourierBlock(nn.Module):
         
         
         out = self.alpha[self.idxs] * x
-        out = self.dataset.from_helical(out)
+        out = self.dataset.from_helical(out, indomain='fourier')
         out = self.batchnorm(out)
         out = self.actfun(out)
-        out = self.dataset.to_helical(out)
+        out = self.dataset.to_helical(out, outdomain='fourier')
             
         return out + x
 
