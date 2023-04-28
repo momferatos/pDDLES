@@ -19,7 +19,7 @@ import torch.distributed as dist
 from lib.datasets.Datasets import TurbDataset
 
 def plot_results(args, model, train_losses, test_losses,
-                 dataset, dataloader):
+                 dataset, dataloader, scaler):
     
     """Plot results
 
@@ -64,24 +64,19 @@ def plot_results(args, model, train_losses, test_losses,
         y = next(iter(dataloader)).to(args.device)
         # y = y.unsqueeze(0).unsqueeze(0)
         y = dataset.truncate(y)
-        ymean = y.mean()
-        ystd = y.std()
-
         X = dataset.LES_filter(y)
-        Xmean = X.mean()
-        Xstd = X.std()
-        X = (X - Xmean) / Xstd
+
+        #!!!!
+
+        X, _ = scaler.transform(X, y, direction='forward')
         
-     
         y_pred = model(X)
-        y_pred = y_pred * ystd + ymean
+        
         
         div = dataset.divergence(y_pred).item()
         print(f'maxdiv: {div}')
-
-        # X, y = scaler.transform(X, y, direction='backward')
         
-        # _, y_pred = scaler.transform(X, y_pred, direction='backward')
+        _, y_pred = scaler.transform(X, y_pred, direction='backward')
 
         filtered_X = dataset.LES_filter(X)
 
@@ -568,7 +563,7 @@ def predict(model, prediction_filenames, args, prediction_dataset,
 
     return
 
-def plot_histograms(dataloader, model, dataset, args):
+def plot_histograms(dataloader, model, dataset, scaler, args):
 
     fig, axs = plt.subplots(2, 1, figsize=(15, 10))
     axs[0].set_yscale('log')
@@ -579,16 +574,15 @@ def plot_histograms(dataloader, model, dataset, args):
         y = next(iter(dataloader)).to(args.device)
         # y = y.unsqueeze(0).unsqueeze(0)
         y = dataset.truncate(y)
-        ymean = y.mean()
-        ystd = y.std()
-
+        
         X = dataset.LES_filter(y)
-        Xmean = X.mean()
-        Xstd = X.std()
-        X = (X - Xmean) / Xstd
-
+        
+        X, _ = scaler.transform(X, y, direction='forward')
+        
         y_pred = model(X)
-        y_pred = y_pred * ystd + ymean
+
+        _, y_pred = scaler.transform(X, y_pred, direction='backward')
+        
         maxstep = int(np.log2(args.n))
 
         colors = ('red', 'green', 'blue', 'cyan', 'magenta', 'orange', 'purple', 'pink', 'yellow', 'gray', 'gold')
@@ -625,8 +619,8 @@ def plot_histograms(dataloader, model, dataset, args):
     axs[0].set_title('Longitudinal velocity increment PDFs')
     axs[0].set_ylabel('$\sigma_{\delta u^L} P(\delta u^L)$')
     axs[0].set_xlabel('$\delta u_L / \sigma_{\delta u^L}$')
-    xp = xp / std
-    axs[0].plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2), color='black', label='Gaussian')
+    xp = np.linspace(-6.0, 6.0, args.n)
+    axs[0].plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2), '.', color='black', label='Gaussian')
     axs[0].legend(loc='best')
 
     for data, label, style in zip((y, y_pred), ('Target', 'Prediction'), ('-', '--')):

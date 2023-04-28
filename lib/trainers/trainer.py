@@ -27,7 +27,7 @@ class dummy:
     
 class Trainer:
 
-    def __init__(self, args, train_loader, test_loader, valid_loader, model, loss, optimizer, dataset):
+    def __init__(self, args, train_loader, test_loader, valid_loader, model, loss, optimizer, dataset, scaler):
 
         self.args = args
         self.train_gen = train_loader
@@ -37,6 +37,7 @@ class Trainer:
         self.loss = loss
         self.optimizer = optimizer
         self.dataset = dataset
+        self.scaler = scaler
         self.fp16_scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
         self.test_losses = []
         self.train_losses = []
@@ -81,20 +82,15 @@ class Trainer:
             # === Forward pass === #
             with autocast:
                 y = input_data.to(self.device)
-                ymean = y.mean()
-                ystd = y.std()
-                
+                                
                 X = self.dataset.LES_filter(y)
-                Xmean = X.mean()
-                Xstd = X.std()
-                X = (X - Xmean) / Xstd
-                
+                                
                 # normalize
-                # X, y = self.scaler.transform(X, y, direction='forward')
+                X, y = self.scaler.transform(X, y, direction='forward')
 
                 preds = self.model(X)
-                
-                labels = (y - ymean) / ystd 
+
+                labels = y
                 
                 loss = self.loss(preds, labels)
                 
@@ -154,23 +150,19 @@ class Trainer:
                 # === Forward pass === #
                 with autocast:
                     y = input_data.to(self.device)
-                    ymean = y.mean()
-                    ystd = y.std()
                     
                     X = self.dataset.LES_filter(y)
-                    Xmean = X.mean()
-                    Xstd = X.std()
                     
-                    X = (X - Xmean) / Xstd
                     # normalize
-                    #X, y = self.scaler.transform(X, y, direction='forward')
+                    X, y = self.scaler.transform(X, y, direction='forward')
 
                 
                     preds = self.model(X)
-                        
+
+                    
                     div = self.dataset.divergence(preds)
                     
-                    labels = (y - ymean) / ystd
+                    labels = y
                     
                     loss = self.loss(preds, labels)
                     test_loss += loss
@@ -243,23 +235,18 @@ class Trainer:
                 # === Forward pass === #
                 with autocast:
                     y = input_data.to(self.device)
-                    ymean = y.mean()
-                    ystd = y.std()
                     
                     X = self.dataset.LES_filter(y)
-                    Xmean = X.mean()
-                    Xstd = X.std()
                     
-                    X = (X - Xmean) / Xstd
                     # normalize
-                    #X, y = self.scaler.transform(X, y, direction='forward')
+                    X, y = self.scaler.transform(X, y, direction='forward')
 
                 
                     preds = self.model(X)
                         
                     div = self.dataset.divergence(preds)
                     
-                    labels = (y - ymean) / ystd
+                    labels = y
                     
                     loss = self.loss(preds, labels)
                     val_loss += loss

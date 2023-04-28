@@ -38,6 +38,8 @@ import numpy as np
 
 import math
 
+import pywt
+
 def parse_args():
 
     parser = argparse.ArgumentParser(description='Template')
@@ -169,7 +171,7 @@ def parse_args():
 
     parser.add_argument('-num_levels',
                         help='Number of Wavelet transform levels ',
-                        default=3,
+                        default=None,
                         type=int)
 
     parser.add_argument('-dimensions',
@@ -207,7 +209,7 @@ def parse_args():
                         type=str)
     
     
-    parser.add_argument('-wavelet_type',
+    parser.add_argument('-wavelet',
                         help='Pywavelet wavelet type to use.',
                         default='db4',
                         type=str)
@@ -256,7 +258,7 @@ class SLURM_Trainer(object):
 def main():
     
     args, parser = parse_args()
-
+    
     cmdline = ''
     for arg in sys.argv:
         cmdline = cmdline + ' ' + arg
@@ -357,6 +359,14 @@ def train(gpu, args):
         y = np.array(h5file[args.hdf5_key], dtype='float32')
         args.n = y.shape[0]
 
+    if args.wavelet == 'list':
+        for wavelet in pywt.wavelist(kind='discrete'):
+            wv = pywt.Wavelet(wavelet)
+            levels = pywt.dwt_max_level(args.n, wv)
+            if levels > 0:
+                print(f'{wavelet} - {levels}/{int(np.log2(args.n))}')
+        return
+    
     if args.num_coeffs == 0:
         args.num_coeffs = int(math.sqrt(args.n ** 3))
         
@@ -388,7 +398,7 @@ def train(gpu, args):
 
     train_sampler = TurbSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
     test_sampler = TurbSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
-    
+
 
     train_loader = DataLoader(dataset=train_dataset, 
                             sampler = train_sampler,
@@ -414,6 +424,14 @@ def train(gpu, args):
                                 shuffle=False   
     )
 
+    scaler_loader = DataLoader(dataset=train_dataset,
+                                batch_size=args.batch_per_task,
+                                num_workers= args.workers,
+                                pin_memory = True,
+                                drop_last = args.drop_last,
+                                shuffle=False   
+    )
+
     print(f"Data loaded")
     
 
@@ -429,7 +447,16 @@ def train(gpu, args):
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
     if args.arch == 'FourierNet':
         print(f'{args.num_coeffs} trainable spectral trainable coefficients per block.')
-
+    elif args.arch == 'WaveletNet':
+        print(f'Wavelet: {args.wavelet}')
+        if args.num_levels:
+            num_levels = args.num_levels
+        else:
+            w = pywt.Wavelet(args.wavelet)
+            num_levels = pywt.dwt_max_level(args.n, w)
+        print(f'Number of trainable wavelet levels: {num_levels}/{int(np.log2(args.n))}')
+        print()
+        
     if args.dev == 'gpu':
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
 
@@ -462,24 +489,26 @@ def train(gpu, args):
     from lib.core.optimizer import get_optimizer
     optimizer = get_optimizer(model, args)
 
-    #scaler = get_scaler(scaler_loader, args)
-    #scaler.fit()
+    scaler = get_scaler(scaler_loader, args)
+    scaler.fit()
     
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
     
     if args.predict:
-        Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset).load_if_available()
+        Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset, scaler).load_if_available()
         
         print(f"Model loaded")
+        print()
         
         train_losses = [[0., 0.], [1., 1.]]
         test_losses = [[0., 0.], [1., 1.]]
     else:
 
         print(f"Model loaded")
+        print()
         
-        train_losses, test_losses, valid_loss = Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset).fit()
+        train_losses, test_losses, valid_loss = Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset, scaler).fit()
 
         min_test_loss = np.min(np.array(test_losses))
         min_epoch = np.argmin(np.array(test_losses))
@@ -488,8 +517,8 @@ def train(gpu, args):
         with open(os.path.join(args.out, 'losses.dat'), 'w') as f:
             f.write(f'{args.alpha} {min_epoch} {min_test_loss} {min_train_loss} {valid_loss}')
 
-    plot_histograms(valid_loader, model, train_dataset, args)
-    plot_results(args, model, train_losses, test_losses, train_dataset, valid_loader)
+    plot_histograms(valid_loader, model, train_dataset, scaler, args)
+    plot_results(args, model, train_losses, test_losses, train_dataset, valid_loader, scaler)
     if args.arch == 'FourierNet':
         plot_FourierNet(model, args)
     

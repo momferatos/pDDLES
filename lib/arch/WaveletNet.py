@@ -138,13 +138,16 @@ class ScalarWaveletBlock(nn.Module):
 
         self.args = args
         self.device = args.device
-        self.wavelet_type = args.wavelet_type
+        self.wavelet_type = args.wavelet
         self.actfun = args.actfun # define activation function
         self.wavelet = pywt.Wavelet(self.wavelet_type) # define wavelet
         self.n = self.args.n # define resolution of the data square/cube
         # define number of levels of the wavelet transform
-        self.num_levels = (args.num_levels if args.num_levels != 0
-                           else int(np.log2(args.n)))
+        if args.num_levels:
+            self.num_levels = args.num_levels
+        else:
+            self.num_levels = pywt.dwt_max_level(args.n, self.wavelet)
+            
         # define wavelet coeffient multiplication mode
         self.mode = args.wavelet_mode 
         self.dummy_param = nn.Parameter(torch.empty(0), requires_grad=True)

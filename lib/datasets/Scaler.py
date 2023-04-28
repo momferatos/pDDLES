@@ -147,6 +147,7 @@ class MinmaxScaler(object):
 
         self.dataloader = dataloader
         self.dataset = TurbDataset([], args)
+        self.args = args
         
         self.X_max = 0.0
         self.X_min = 0.0
@@ -177,10 +178,7 @@ class MinmaxScaler(object):
         X_min = 1.0e6
         X_max = -1.0e6
         for nbatch, y in enumerate(self.dataloader):
-            X = dataset.LES_filter(y, self.args.alpha)
-
-            if self.args.prediction_mode == 'large_to_small':
-                y = y - X
+            X = self.dataset.LES_filter(y)
 
             X_min = min(X_min, X.flatten().min())
             X_max = max(X_max, X.flatten().max())
