@@ -446,7 +446,7 @@ def train(gpu, args):
     print()
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
     if args.arch == 'FourierNet':
-        print(f'{args.num_coeffs} trainable spectral trainable coefficients per block.')
+        print(f'{args.num_coeffs} trainable spectral coefficients per block.')
     elif args.arch == 'WaveletNet':
         print(f'Wavelet: {args.wavelet}')
         if args.num_levels:
@@ -513,7 +513,7 @@ def train(gpu, args):
         min_test_loss = np.min(np.array(test_losses))
         min_epoch = np.argmin(np.array(test_losses))
         min_train_loss = train_losses[min_epoch]
-        print(f'Minimum test loss {min_test_loss} @ epoch {min_epoch}, training loss = {min_train_loss},  validation loss = {valid_loss}')
+        print(f'Minimum test loss {min_test_loss:.5e} @ epoch {min_epoch}, training loss = {min_train_loss:.5e},  validation loss = {valid_loss:.5e}')
         with open(os.path.join(args.out, 'losses.dat'), 'w') as f:
             f.write(f'{args.alpha} {min_epoch} {min_test_loss} {min_train_loss} {valid_loss}')
 

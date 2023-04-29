@@ -86,7 +86,7 @@ class Trainer:
                 X = self.dataset.LES_filter(y)
                                 
                 # normalize
-                X, y = self.scaler.transform(X, y, direction='forward')
+                X, y = self.scaler.transform(X, y, action='scale')
 
                 preds = self.model(X)
 
@@ -154,7 +154,7 @@ class Trainer:
                     X = self.dataset.LES_filter(y)
                     
                     # normalize
-                    X, y = self.scaler.transform(X, y, direction='forward')
+                    X, y = self.scaler.transform(X, y, action='scale')
 
                 
                     preds = self.model(X)
@@ -239,7 +239,7 @@ class Trainer:
                     X = self.dataset.LES_filter(y)
                     
                     # normalize
-                    X, y = self.scaler.transform(X, y, direction='forward')
+                    X, y = self.scaler.transform(X, y, action='scale')
 
                 
                     preds = self.model(X)

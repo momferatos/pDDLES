@@ -68,15 +68,15 @@ def plot_results(args, model, train_losses, test_losses,
 
         #!!!!
 
-        X, _ = scaler.transform(X, y, direction='forward')
+        X_sc, _ = scaler.transform(X, y, action='scale')
         
-        y_pred = model(X)
+        y_pred = model(X_sc)
         
         
         div = dataset.divergence(y_pred).item()
         print(f'maxdiv: {div}')
         
-        _, y_pred = scaler.transform(X, y_pred, direction='backward')
+        _, y_pred = scaler.transform(X, y_pred, action='unscale')
 
         filtered_X = dataset.LES_filter(X)
 
@@ -577,11 +577,11 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         
         X = dataset.LES_filter(y)
         
-        X, _ = scaler.transform(X, y, direction='forward')
+        X, _ = scaler.transform(X, y, action='scale')
         
         y_pred = model(X)
 
-        _, y_pred = scaler.transform(X, y_pred, direction='backward')
+        _, y_pred = scaler.transform(X, y_pred, action='unscale')
         
         maxstep = int(np.log2(args.n))
 

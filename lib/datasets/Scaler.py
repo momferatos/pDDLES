@@ -90,7 +90,7 @@ class NormScaler(object):
                 
         return
 
-    def transform(self, X, y, direction):
+    def transform(self, X, y, action):
         """Normalize minibatch
 
         Parameters
@@ -113,21 +113,21 @@ class NormScaler(object):
         rang = self.X_std
         bias = self.X_mean            
 
-        if direction == 'forward':
-            X = (X - bias) / rang
-        elif direction == 'backward':
-            X = rang * X + bias
+        if action == 'scale':
+            X_tr = (X - bias) / rang
+        elif action == 'unscale':
+            X_tr = rang * X + bias
         
         rang = self.y_std
         bias = self.y_mean
        
-        if direction == 'forward':
-            y = (y - bias) / rang
-        elif direction == 'backward':
-            y = rang * y + bias    
+        if action == 'scale':
+            y_tr = (y - bias) / rang
+        elif action == 'unscale':
+            y_tr = rang * y + bias    
 
 
-        return X, y
+        return X_tr, y_tr
 
 class MinmaxScaler(object):
     """Datalolader scaler
@@ -192,7 +192,7 @@ class MinmaxScaler(object):
 
         return
 
-    def transform(self, X, y, direction):
+    def transform(self, X, y, action):
         """Normalize minibatch
 
         Parameters
@@ -219,10 +219,10 @@ class MinmaxScaler(object):
         rang = rang.to(device)
         bias = bias.to(device)
         
-        if direction == 'forward':
-            X = (X - bias) / rang
-        elif direction == 'backward':
-            X = rang * X + bias
+        if action == 'scale':
+            X_tr = (X - bias) / rang
+        elif action == 'unscale':
+            X_tr = rang * X + bias
 
         rang = self.y_max - self.y_min
         bias = self.y_min
@@ -232,13 +232,13 @@ class MinmaxScaler(object):
         rang = rang.to(device)
         bias = bias.to(device)
 
-        if direction == 'forward':
-            y = (y - bias) / rang
-        elif direction == 'backward':
-            y = rang * y + bias    
+        if action == 'scale':
+            y_tr = (y - bias) / rang
+        elif action == 'unscale':
+            y_tr = rang * y + bias    
 
 
-        return X, y
+        return X_tr, y_tr
             
     
 def get_scaler(dataloader, args):
