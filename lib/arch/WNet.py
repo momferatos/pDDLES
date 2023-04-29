@@ -13,7 +13,7 @@ import pywt
 import ptwt
 from lib.datasets.TurbDataset import TurbDataset
 
-class WaveletNet(nn.Module):
+class WNet(nn.Module):
     """Wavelet neural network
 
     Parameters
@@ -28,7 +28,7 @@ class WaveletNet(nn.Module):
     """ 
     def __init__(self, args):
 
-        super(WaveletNet, self).__init__()
+        super(WNet, self).__init__()
 
         self.args = args
         # build pipeline of num_blocks WaveletBlocks
@@ -253,6 +253,6 @@ class ScalarWaveletBlock(nn.Module):
 
 def get_model(args):
 
-    model = WaveletNet(args)
+    model = WNet(args)
 
     return model

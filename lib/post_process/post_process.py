@@ -447,7 +447,7 @@ def spectrum(X, args):
 
         return wvs_spec, spec
 
-def plot_FourierNet(model, args):
+def plot_FNet(model, args):
     plt.figure(figsize=(15, 10))
     plt.xscale('log')
     for param_tensor in model.state_dict():

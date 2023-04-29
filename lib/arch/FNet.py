@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from lib.datasets.TurbDataset import TurbDataset
 
-class FourierNet(nn.Module):
+class FNet(nn.Module):
     """Fourier neural network
 
     Parameters
@@ -25,7 +25,7 @@ class FourierNet(nn.Module):
     """ 
     def __init__(self, args):
 
-        super(FourierNet, self).__init__()
+        super(FNet, self).__init__()
         self.args = args
         self.dataset = TurbDataset([], self.args)
         
@@ -128,6 +128,6 @@ class FourierBlock(nn.Module):
 
 def get_model(args):
 
-    model = FourierNet(args)
+    model = FNet(args)
 
     return model

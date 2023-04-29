@@ -29,7 +29,7 @@ from lib.utils.distributed import init_dist_node, init_dist_gpu, get_shared_fold
 import submitit, random, sys
 from pathlib import Path
 from lib.utils.parameters import parameters
-from lib.post_process.post_process import plot_results, plot_FourierNet, plot_histograms
+from lib.post_process.post_process import plot_results, plot_FNet, plot_histograms
 from lib.datasets.Scaler import get_scaler
 from lib.datasets.Sampler import TurbSampler
 
@@ -94,7 +94,7 @@ def parse_args():
                                             help='number of workers')
 
     # === Architecture === #
-    parser.add_argument('-arch', type=str, default = 'FourierNet',
+    parser.add_argument('-arch', type=str, default = 'FNet',
                                             help='Architecture to choose')
     
     # === Trainer === #
@@ -141,7 +141,7 @@ def parse_args():
 
         
     parser.add_argument('-num_blocks',
-                        help='Number of blocks in the ResNet or FourierNet',
+                        help='Number of blocks in the ResNet or FNet',
                         default=8,
                         type=int)
 
@@ -445,9 +445,9 @@ def train(gpu, args):
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print()
     print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
-    if args.arch == 'FourierNet':
+    if args.arch == 'FNet':
         print(f'{args.num_coeffs} trainable spectral coefficients per block.')
-    elif args.arch == 'WaveletNet':
+    elif args.arch == 'WNet':
         print(f'Wavelet: {args.wavelet}')
         if args.num_levels:
             num_levels = args.num_levels
@@ -475,7 +475,7 @@ def train(gpu, args):
     model = model.to(args.device)
         
     find_unused_parameters = None
-    if args.arch == 'WaveletNet':
+    if args.arch == 'WNet':
         find_unused_parameters = True
         
     model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=find_unused_parameters)
@@ -519,8 +519,8 @@ def train(gpu, args):
 
     plot_histograms(valid_loader, model, train_dataset, scaler, args)
     plot_results(args, model, train_losses, test_losses, train_dataset, valid_loader, scaler)
-    if args.arch == 'FourierNet':
-        plot_FourierNet(model, args)
+    if args.arch == 'FNet':
+        plot_FNet(model, args)
     
     return
 

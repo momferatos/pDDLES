@@ -67,7 +67,7 @@ class parameters:
         self.params['num_coeffs'] = 128
         # Number of Discrete Wavelet Transform Levels
         self.params['num_levels'] = 3
-        # Type of model: ('ResNet', 'FourierNet' 'WaveletNet' or 'SuperNet')
+        # Type of model: ('ResNet', 'FNet' 'WNet' or 'SuperNet')
         self.params['model_type'] = 'ResNet' 
         # Prediction mode: 'large_to_all' learns the map X -> y with
         # X = LES_filter(y) i.e. from large scales to all scales
@@ -200,8 +200,8 @@ class parameters:
                                'params.dat'), 'w') as f:
             f.write(f'Model type: {self.params["model_type"]}.\n')
             if (self.params["model_type"] == 'ResNet'
-                or self.params["model_type"] == 'FourierNet'
-                or self.params["model_type"] == 'WaveletNet'):
+                or self.params["model_type"] == 'FNet'
+                or self.params["model_type"] == 'WNet'):
                   f.write(f'Number of blocks: {self.params["num_blocks"]}.\n')
             if (self.params["model_type"] == 'ResNet'
                 or self.params["model_type"]== 'SuperNet'):
@@ -287,7 +287,7 @@ class parameters:
 
         
         # parser.add_argument('--num_blocks',
-        #                     help='Number of blocks in the ResNet or FourierNet'
+        #                     help='Number of blocks in the ResNet or FNet'
         #                     '(default: 8)',
         #                     type=int)
 
@@ -397,7 +397,7 @@ class parameters:
         #                     'the large scales to the small scales',
         #                     type=str)
         # parser.add_argument('--model_type',
-        #                     help='Type of model (\'ResNet\', \'FourierNet\' or '
+        #                     help='Type of model (\'ResNet\', \'FNet\' or '
         #                     '\'SuperNet\')'
         #                     '(default: \'SuperNet\')',
         #                     type=str)

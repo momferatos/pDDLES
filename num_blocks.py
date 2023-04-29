@@ -46,7 +46,7 @@ def collect(num_blocks, arch, prefixes):
     plt.show()
 
 actfuns  = ['ReLU', 'Tanh'] #'CELU', 'SELU', 'Sigmoid']
-arch = 'WaveletNet'
+arch = 'WNet'
 
 if mode == '-spawn':
     spawn(num_blocks, arch, actfuns)
