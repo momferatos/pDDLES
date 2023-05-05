@@ -27,9 +27,9 @@ class NormScaler(object):
         self.dataset = TurbDataset([], args)
                                    
         self.X_mean = 0.0
-        self.X_std = 0.0
+        self.X_std = 1.0
         self.y_mean = 0.0
-        self.y_std = 0.0
+        self.y_std = 1.0
 
         self.device = args.device
 
@@ -58,8 +58,10 @@ class NormScaler(object):
 
             dims = y.shape
             X = self.dataset.LES_filter(y)
-            X_mean += torch.sum(X, dim=(0, 2, 3, 4), keepdim=True, dtype=torch.float64)
-            y_mean += torch.sum(y, dim=(0, 2, 3, 4), keepdim=True, dtype=torch.float64)
+            X_mean += torch.sum(X, dim=(0, 2, 3, 4),
+                                keepdim=True, dtype=torch.float64)
+            y_mean += torch.sum(y, dim=(0, 2, 3, 4),
+                                keepdim=True, dtype=torch.float64)
             fac += X.numel() / dims[1]
 
         X_mean /= fac
@@ -74,9 +76,11 @@ class NormScaler(object):
             dims = y.shape
             X = self.dataset.LES_filter(y)
             tmp = (X - X_mean) ** 2
-            X_std += torch.sum(tmp, dim=(0, 2, 3, 4), keepdim=True, dtype=torch.float64)
+            X_std += torch.sum(tmp, dim=(0, 2, 3, 4),
+                               keepdim=True, dtype=torch.float64)
             tmp = (y - y_mean) ** 2
-            y_std += torch.sum(tmp, dim=(0, 2, 3, 4), keepdim=True, dtype=torch.float64)
+            y_std += torch.sum(tmp, dim=(0, 2, 3, 4),
+                               keepdim=True, dtype=torch.float64)
 
             fac += X.numel() / dims[1]
 
@@ -149,9 +153,9 @@ class MinmaxScaler(object):
         self.dataset = TurbDataset([], args)
         self.args = args
         
-        self.X_max = 0.0
+        self.X_max = 1.0
         self.X_min = 0.0
-        self.y_max = 0.0
+        self.y_max = 1.0
         self.X_min = 0.0
 
         self.device = args.device
@@ -172,12 +176,15 @@ class MinmaxScaler(object):
 
         """
 
-                # calculate maximum/minimum of train dataset for normalization 
+        # calculate maximum/minimum of train dataset for normalization 
         y_min = 1.0e6
         y_max = -1.0e6
         X_min = 1.0e6
         X_max = -1.0e6
+        nbatches = len(self.dataloader)
         for nbatch, y in enumerate(self.dataloader):
+            if nbatch % 10 == 0:
+                print(f'Computing min/max: {nbatch}/{nbatches}')
             X = self.dataset.LES_filter(y)
 
             X_min = min(X_min, X.flatten().min())

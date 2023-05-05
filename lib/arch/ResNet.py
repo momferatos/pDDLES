@@ -80,11 +80,14 @@ class ResNet(nn.Module):
             self.input_featmaps = 2
 
         self.actfun = self.args.actfun # set activation function
-        # first convolutional layer, maps 1 feature map to num_featmaps feature maps
-        self.convfirst = self.args.conv(self.input_featmaps, self.args.num_featmaps,
-                                   kernel_size=self.args.kernel_size,
-                                   padding='same',
-                                   padding_mode='circular', bias=True)
+        # first convolutional layer, maps 1 feature map to
+        # num_featmaps feature maps
+        self.convfirst = self.args.conv(self.input_featmaps,
+                                        self.args.num_featmaps,
+                                        kernel_size=self.args.kernel_size,
+                                        padding='same',
+                                        padding_mode='circular',
+                                        bias=True)
         self.batchnorm = self.args.batchnorm(
             num_features=self.args.num_featmaps)
         
@@ -94,12 +97,16 @@ class ResNet(nn.Module):
             modulelist.append(ResNetBlock(self.args))
         self.resnet = nn.Sequential(*modulelist)
         
-        # last convolutional layer, maps num_featmaps feature maps back to 1 feature map
-        self.convlast = self.args.conv(self.args.num_featmaps, self.input_featmaps,
-                                  kernel_size=self.args.kernel_size,
-                                  padding='same',
-                                  padding_mode='circular', bias=True)
-        self.batchnormlast = self.args.batchnorm(num_features=self.input_featmaps)
+        # last convolutional layer, maps num_featmaps feature maps
+        # back to 1 feature map
+        self.convlast = self.args.conv(self.args.num_featmaps,
+                                       self.input_featmaps,
+                                       kernel_size=self.args.kernel_size,
+                                       padding='same',
+                                       padding_mode='circular',
+                                       bias=True)
+        self.batchnormlast = self.args.batchnorm(
+            num_features=self.input_featmaps)
         self.dataset = TurbDataset([], self.args)
             
         self.init_weights(self.convfirst)

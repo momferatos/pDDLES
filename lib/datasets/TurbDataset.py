@@ -61,7 +61,8 @@ class TurbDataset(Dataset):
             filename = self.filenames[0]
             # load data from HDF5 file
             with h5py.File(filename, 'r') as h5file:
-                # 2d or 3d data, using float32 for better performance on the GPU
+                # 2d or 3d data, using float32 for
+                # better performance on the GPU
                 X = np.array(h5file[self.args.hdf5_key], dtype='float32')
 
             if self.args.hdf5_key == 'u':
@@ -107,9 +108,15 @@ class TurbDataset(Dataset):
         mask = (mag_ezxk != 0.0)
         sqrt2 = np.sqrt(2.0)
         
-        self.hplus = torch.where(mask, ezxk / (sqrt2 * mag_ezxk) + 1j * kxezxk / (sqrt2 * mag_kxezxk), (ex + 1j * ey) / sqrt2)
+        self.hplus = (torch.where(mask, ezxk /
+                                  (sqrt2 * mag_ezxk) + 1j *
+                                  kxezxk / (sqrt2 * mag_kxezxk),
+                                  (ex + 1j * ey) / sqrt2))
         
-        self.hminus = torch.where(mask, ezxk / (sqrt2 * mag_ezxk) - 1j * kxezxk / (sqrt2 * mag_kxezxk), (ex - 1j * ey) / sqrt2)
+        self.hminus = (torch.where(mask, ezxk /
+                                   (sqrt2 * mag_ezxk) - 1j *
+                                   kxezxk / (sqrt2 * mag_kxezxk),
+                                   (ex - 1j * ey) / sqrt2))
 
         self.hplus = self.hplus.to(self.device)
         self.hminus = self.hminus.to(self.device)
@@ -120,15 +127,19 @@ class TurbDataset(Dataset):
     
     def __len__(self):
 
-        if self.args.drop_last and len(self.filenames) % self.args.world_size != 0:  # type: ignore[arg-type]
+        if self.args.drop_last and \
+            len(self.filenames) % self.args.world_size != 0:
+            # type: ignore[arg-type]
             # Split to nearest available length that is evenly divisible.
             # This is to ensure each rank receives the same amount of data when
             # using this Sampler.
-            length = math.ceil(
-                (len(self.filenames) - self.args.world_size) / self.args.world_size  # type: ignore[arg-type]
-            )
+            length = (math.ceil((len(self.filenames) -
+                                 self.args.world_size) /
+                                self.args.world_size)) # type: ignore[arg-type]
+            
         else:
-            length = math.ceil(len(self.filenames) / self.args.world_size)  # type: ignore[arg-type]
+            length = (math.ceil(len(self.filenames) /
+                                self.args.world_size)) # type: ignore[arg-type]
 
         return length
 
@@ -202,7 +213,8 @@ class TurbDataset(Dataset):
         n = y.shape[-2] # get DNS square linear resolution
         # dims = (-2, -1) if self.args.dimensions == 2 else (-3, -2, -1)
         dims = (-3, -2, -1)
-        fy = torch.fft.rfftn(y, dim=self.dims, norm='ortho') # forward real-to-half-complex FFT
+        # forward real-to-half-complex FFT
+        fy = torch.fft.rfftn(y, dim=self.dims, norm='ortho') 
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
         # wavevector magnitudes
@@ -215,7 +227,8 @@ class TurbDataset(Dataset):
         wvmax = torch.max(wvms) # maximum wavevector magnitude
         mask = wvms > self.args.alpha * wvmax # define filter mask
         fy[..., mask] = 0.0 # apply filter
-        y = torch.fft.irfftn(fy, dim=self.dims, norm='ortho') # inverse half-complex-to-real FFT
+        # inverse half-complex-to-real FFT
+        y = torch.fft.irfftn(fy, dim=self.dims, norm='ortho') 
 
         return y
 
@@ -292,8 +305,10 @@ class TurbDataset(Dataset):
         hminus = self.hminus.unsqueeze(0).expand(
             u.shape[0], -1, -1, -1, -1)
         
-        fuplus = torch.einsum('bi...,bi...->b...', fu, torch.conj_physical(hplus)).unsqueeze(1)
-        fuminus = torch.einsum('bi...,bi...->b...', fu, torch.conj_physical(hminus)).unsqueeze(1)
+        fuplus = torch.einsum('bi...,bi...->b...',
+                              fu, torch.conj_physical(hplus)).unsqueeze(1)
+        fuminus = torch.einsum('bi...,bi...->b...',
+                               fu, torch.conj_physical(hminus)).unsqueeze(1)
 
         if outdomain == 'physical':
             uplus = torch.fft.irfftn(fuplus, dim=self.dims, norm='ortho')
@@ -361,7 +376,8 @@ class TurbDataset(Dataset):
         
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') # forward real-to-half-complex FF
+        # forward real-to-half-complex FF
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
         w = torch.cross(1j * k, fX, dim=1)
         w = torch.fft.irfftn(w, dim=self.dims, norm='ortho')
         
@@ -406,7 +422,8 @@ class TurbDataset(Dataset):
             # truncate to Patterson-Orszag dealiasing limit
             y = self.truncate(y) 
             if self.args.hdf5_key == 'scl':
-                y = y.unsqueeze(0) # Add extra tensor dimension required by PyTorch
+                # Add extra tensor dimension required by PyTorch
+                y = y.unsqueeze(0) 
                 
         return y
     

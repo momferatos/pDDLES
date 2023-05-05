@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader, random_split
 import torch.distributed as dist
 
-from lib.datasets.Datasets import TurbDataset
+from lib.datasets.TurbDataset import TurbDataset
 
 def plot_results(args, model, train_losses, test_losses,
                  dataset, dataloader, scaler):
@@ -452,7 +452,9 @@ def plot_FNet(model, args):
     plt.xscale('log')
     for param_tensor in model.state_dict():
         if 'alpha' in param_tensor:
-            plt.plot(np.array(model.state_dict()[param_tensor].to('cpu')), label=f'{param_tensor}')
+            plt.plot(np.array(
+                model.state_dict()[param_tensor].to('cpu')),
+                     label=f'{param_tensor}')
 
     plt.legend(loc='best')
     
@@ -591,7 +593,8 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
             color = colors[istep] 
             shifts = 3 * [step] + 3 * [-step]
             dims = 2 * [-3, -2, -1]
-            for yy, var, style in zip((y, y_pred), ('Target', 'Prediction'), ('-', '--')):
+            for yy, var, style in zip((y, y_pred), \
+                                       ('Target', 'Prediction'), ('-', '--')):
                 data = []
                 for shift, dim in zip(shifts, dims):
                     yyrolled = torch.roll(yy, shifts=shift, dims=dim)
@@ -614,16 +617,19 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                 else:
                     label = None
                    
-                axs[0].plot(xp / std, yp * std , style, color=color, label=label)
+                axs[0].plot(xp / std, yp * std ,
+                            style, color=color, label=label)
                 
     axs[0].set_title('Longitudinal velocity increment PDFs')
     axs[0].set_ylabel('$\sigma_{\delta u^L} P(\delta u^L)$')
     axs[0].set_xlabel('$\delta u_L / \sigma_{\delta u^L}$')
     xp = np.linspace(-6.0, 6.0, args.n)
-    axs[0].plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2), '.', color='black', label='Gaussian')
+    axs[0].plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2),
+                '.', color='black', label='Gaussian')
     axs[0].legend(loc='best')
 
-    for data, label, style in zip((y, y_pred), ('Target', 'Prediction'), ('-', '--')):
+    for data, label, style in zip((y, y_pred), \
+                                   ('Target', 'Prediction'), ('-', '--')):
         lgrads = dataset.longitudinal_gradients(data)
         std = lgrads.std().to('cpu').item()
         lgrads = lgrads.to('cpu')

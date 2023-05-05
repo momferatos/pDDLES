@@ -93,7 +93,8 @@ def init_dist_gpu(gpu, args):
 
     if args.slurm:
         job_env = submitit.JobEnvironment()
-        args.output_dir = Path(str(args.output_dir).replace("%j", str(job_env.job_id)))
+        args.output_dir = Path(str(args.output_dir).replace(
+            "%j", str(job_env.job_id)))
         args.gpu = job_env.local_rank
         args.rank = job_env.global_rank
         nodelist  = os.environ["SLURM_JOB_NODELIST"]
@@ -123,7 +124,9 @@ def init_dist_gpu(gpu, args):
     else:
         backend = 'gloo'
     
-    dist.init_process_group(backend=backend, world_size=args.world_size, rank=args.rank) #init_method=args.dist_url 
+    dist.init_process_group(
+        backend=backend, world_size=args.world_size, rank=args.rank)
+    #init_method=args.dist_url 
 
     fix_random_seeds()
 
@@ -177,7 +180,8 @@ class SmoothedValue(object):
         """
         if not is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device=self.device)
+        t = torch.tensor([self.count, self.total],
+                         dtype=torch.float64, device=self.device)
         dist.barrier()
         dist.all_reduce(t)
         t = t.tolist()

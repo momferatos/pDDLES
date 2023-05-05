@@ -52,8 +52,9 @@ class SubgridLoss(nn.Module):
         #                    tens_pred,
         #                    tens_pred).unsqueeze(1)
 
-#        frob = torch.linalg.matrix_norm(tens, dim=(1, 2)).unsqueeze(1)
-#        frob_pred = torch.linalg.matrix_norm(tens_pred, dim=(1, 2)).unsqueeze(1)
+        # frob = torch.linalg.matrix_norm(tens, dim=(1, 2)).unsqueeze(1)
+        # frob_pred = torch.linalg.matrix_norm(tens_pred,
+        #                                      dim=(1, 2)).unsqueeze(1)
 
         #loss = self.loss_fn(tens_pred, tens)
         tens_pred = tens_pred.to(self.device)

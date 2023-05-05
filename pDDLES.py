@@ -24,13 +24,14 @@ from torch.utils.data.distributed import DistributedSampler
 
 import argparse
 from lib.utils.file import bool_flag
-from lib.utils.distributed import init_dist_node, init_dist_gpu, get_shared_folder
+from lib.utils.distributed import init_dist_node, init_dist_gpu, \
+    get_shared_folder
 
 import submitit, random, sys
 from pathlib import Path
-from lib.utils.parameters import parameters
-from lib.post_process.post_process import plot_results, plot_FNet, plot_histograms
-from lib.datasets.Scaler import get_scaler
+from lib.post_process.post_process import plot_results, plot_FNet, \
+    plot_histograms
+from lib.scaler.Scaler import get_scaler
 from lib.datasets.Sampler import TurbSampler
 
 import h5py
@@ -46,99 +47,192 @@ def parse_args():
 
     # === PATHS === #
 
-    parser.add_argument('-prefix', type=str, default='')
+    parser.add_argument('-prefix',
+                        type=str,
+                        default='',
+                        help='Output goes to $pDDLES/prefix')
     
-    parser.add_argument('-mem', type=str, default='0')
+    parser.add_argument('-predict',
+                        action='store_true',
+                        help='Prediction mode')
     
-    parser.add_argument('-predict', action='store_true')
-    
-    parser.add_argument('-copy', action='store_false')
+    parser.add_argument('-copy',
+                        action='store_false',
+                        help='Copy files to $LOCALSCRATCH')
 
-    parser.add_argument('-drop_last', action='store_true')
+    parser.add_argument('-drop_last',
+                        action='store_true',
+                        help='Drop remainder files in dataloaders')
 
-    parser.add_argument('-noload', action='store_true')
+    parser.add_argument('-noload',
+                        action='store_true',
+                        help='Don\'t load data to memory')
     
-    parser.add_argument('-scalar', action='store_true')
+    parser.add_argument('-scalar',
+                        action='store_true',
+                        help='Work with scalar data')
     
-    parser.add_argument('-dev', type=str, default="gpu",
-                                            help='Device to use')
+    parser.add_argument('-dev',
+                        type=str,
+                        default="gpu",
+                        help='Device to use: gpu (default) or cpu')
     
-    parser.add_argument('-device', type=str, default="cuda:0",
-                                            help='Device to use')
+    parser.add_argument('-device',
+                        type=str,
+                        default="cuda:0",
+                        help='PyTorch device name')
     
-    parser.add_argument('-data', type=str, default="data",
-                                            help='path to dataset directory')
-    parser.add_argument('-out', type=str, default="out",
-                                            help='path to out directory')
+    parser.add_argument('-data',
+                        type=str,
+                        default="data",
+                        help='path to dataset directory')
+    
+    parser.add_argument('-out',
+                        type=str,
+                        default="out",
+                        help='path to out directory')
 
     # === GENERAL === #
-    parser.add_argument('-model', type=str, default="my_model",
-                                            help='Model name')
-    parser.add_argument('-reset', action='store_true',
-                                            help='Reset saved model logs and weights')
-    parser.add_argument('-tb', action='store_true',
-                                            help='Start TensorBoard')
-    parser.add_argument('-gpus', type=str, default="0",
-                                            help='GPUs list, only works if not on slurm')
-    parser.add_argument('-cfg', type =str,
-                                            help='Configuration file')
+    parser.add_argument('-model',
+                        type=str,
+                        default="TEST",
+                        help='Model name')
+    
+    parser.add_argument('-reset',
+                        action='store_true',
+                        help='Reset saved model logs and weights')
+    
+    parser.add_argument('-tb',
+                        action='store_true',
+                        help='Start TensorBoard')
+    
+    parser.add_argument('-gpus',
+                        type=str,
+                        default="0",
+                        help='GPUs list, only works if not on slurm')
+    
+    parser.add_argument('-cfg',
+                        type =str,
+                        help='Configuration file')
 
     # === Dataset === #
-    parser.add_argument('-dataset', type=str, default = 'TurbDataset',
-                                            help='Dataset to choose')
-    parser.add_argument('-batch_per_task', type=int, default = 32,
-                                            help='batch size per gpu')
-    parser.add_argument('-shuffle', type=bool_flag, default = True,
-                                            help='Shuffle dataset')
-    parser.add_argument('-workers', type=int, default = 0,
-                                            help='number of workers')
+    parser.add_argument('-dataset',
+                        type=str,
+                        default='TurbDataset',
+                        help='Dataset to choose')
+    
+    parser.add_argument('-batch_per_task',
+                        type=int,
+                        default=32,
+                        help='batch size per gpu')
+    
+    parser.add_argument('-shuffle',
+                        type=bool_flag,
+                        default=True,
+                        help='Shuffle dataset?')
+    
+    parser.add_argument('-workers',
+                        type=int,
+                        default=0,
+                        help='number of workers')
 
     # === Architecture === #
-    parser.add_argument('-arch', type=str, default = 'FNet',
-                                            help='Architecture to choose')
+    parser.add_argument('-arch',
+                        type=str,
+                        default='FNet',
+                        help='Architecture')
     
     # === Trainer === #
-    parser.add_argument('-trainer', type=str, default = 'trainer',
-                                            help='Trainer to choose')
-    parser.add_argument('-epochs', type=int, default = 10,
-                                            help='number of epochs')
-    parser.add_argument('-save_every', type=int, default = 1,
-                                            help='Save frequency')
-    parser.add_argument('-fp16', action='store_true',
-                                            help='Use mixed precision only with RTX, V100 and A100 GPUs')
+    parser.add_argument('-trainer',
+                        type=str,
+                        default = 'trainer',
+                        help='Trainer')
+    
+    parser.add_argument('-epochs',
+                        type=int,
+                        default=10,
+                        help='Number of epochs')
+    
+    parser.add_argument('-save_every',
+                        type=int,
+                        default = 1,
+                        help='Save frequency')
+    
+    parser.add_argument('-fp16',
+                        action='store_true',
+                        help='Use mixed precision.')
 
 
     # === Optimization === #
-    parser.add_argument('-optimizer', type=str, default = 'adam',
-                                            help='Optimizer function to choose')
-    parser.add_argument('-lr_start', type=float, default = 1e-2,
-                                            help='Initial Learning Rate')
-    parser.add_argument('-lr_end', type=float, default = 1e-3,
-                                            help='Final Learning Rate')
-    parser.add_argument('-lr_warmup', type=int, default = 10,
-                                            help='warmup epochs for learning rate')
+    parser.add_argument('-optimizer',
+                        type=str,
+                        default = 'adam',
+                        help='Optimizer function to choose')
+    
+    parser.add_argument('-lr_start',
+                        type=float,
+                        default = 1e-2,
+                        help='Initial Learning Rate')
+    
+    parser.add_argument('-lr_end',
+                        type=float,
+                        default = 1e-3,
+                        help='Final Learning Rate')
+    
+    parser.add_argument('-lr_warmup',
+                        type=int,
+                        default=10,
+                        help='Warmup epochs for learning rate')
 
     # === SLURM === #
-    parser.add_argument('-slurm', action='store_true',
-                                            help='Submit with slurm')
-    parser.add_argument('-tasks_per_node', type=int, default=None,
-                                            help='num of gpus per node')
-    parser.add_argument('-nnodes', type=int, default = 1,
-                                            help='number of nodes')
-    parser.add_argument('-nodelist', default = None,
-                                            help='slurm nodeslist. i.e. "GPU17,GPU18"')
-    parser.add_argument('-partition', type=str, default = "gpu",
-                                            help='slurm partition')
-    parser.add_argument('-account', type=str, default = "p200140",
-                                            help='slurm account')
-    parser.add_argument('-timeout', type=str, default = '2-0:0:0',
-                                            help='slurm timeout minimum, reduce if running on the "Quick" partition')
-    parser.add_argument('-qos', type=str, default = 'default',
-                            help='slurm QoS')
-    parser.add_argument('-mem_per_node', type=int, default = 256,
-                            help='memory per node')
+    parser.add_argument('-slurm',
+                        action='store_true',
+                        help='Submit with slurm')
+    
+    parser.add_argument('-tasks_per_node',
+                        type=int,
+                        default=None,
+                        help='Number of SLURM tasks per node')
 
+    
+    parser.add_argument('-nnodes',
+                        type=int,
+                        default=1,
+                        help='Number of SLURM nodes')
+    
+    parser.add_argument('-nodelist',
+                        default = None,
+                        help='SLURM nodeslist. i.e. "GPU17,GPU18"')
+    
+    parser.add_argument('-partition',
+                        type=str,
+                        default="gpu",
+                        help='SLURM partition')
+    
+    parser.add_argument('-account',
+                        type=str,
+                        default="p200140",
+                        help='SLURM account')
+    
+    parser.add_argument('-timeout',
+                        type=str,
+                        default = '2-0:0:0',
+                        help='SLURM timeout')
+    
+    parser.add_argument('-qos',
+                        type=str,
+                        default='default',
+                        help='SLURM QoS')
+    
+    parser.add_argument('-mem_per_node',
+                        type=int,
+                        default=256,
+                        help='SLURM memory per node')
 
+    parser.add_argument('-mem',
+                        type=str,
+                        default='0',
+                        help='SLURM memory')
         
     parser.add_argument('-num_blocks',
                         help='Number of blocks in the ResNet or FNet',
@@ -203,16 +297,16 @@ def parse_args():
 
 
     parser.add_argument('-actfun',
-                        help='Activation function to use:'
-                        'Tanh, Sigmoid or ReLU',
+                        help='PyTorch Activation function name',
                         default='ReLU',
                         type=str)
     
     
     parser.add_argument('-wavelet',
-                        help='Pywavelet wavelet type to use.',
+                        help='PyWavelet wavelet name',
                         default='db4',
                         type=str)
+    
     parser.add_argument('-wavelet_mode',
                         help='Wavelet coefficient multiplication mode',
                         default='outer',
@@ -221,15 +315,7 @@ def parse_args():
     args = parser.parse_args()
 
     args.actfun = eval(f'torch.nn.{args.actfun}()')
-    # if args.actfun == 'ReLU':
-    #     args.actfun = torch.nn.ReLU()
-    # elif args.actfun == 'LeakyReLU':
-    #     args.actfun = torch.nn.LeakyReLU()
-    # elif args.actfun == 'Tanh':
-    #     args.actfun = torch.nn.Tanh()
-    # elif args.actfun == 'Sigmoid':
-    #     args.actfun = torch.nn.Sigmoid()
-    
+        
     # === Read CFG File === #
     if args.cfg:
         with open(args.cfg, 'r') as f:
@@ -291,9 +377,8 @@ def main():
     
     
     if args.slurm:
-        # Almost copy-paste from https://github.com/facebookresearch/deit/blob/main/run_with_submitit.py
-        executor = submitit.AutoExecutor(folder=args.output_dir, slurm_max_num_timeout=30)
-
+        executor = submitit.AutoExecutor(folder=args.output_dir,
+                                         slurm_max_num_timeout=30)
         executor.update_parameters(
             mem_gb=args.mem_per_node,
             tasks_per_node=args.tasks_per_node,
@@ -307,7 +392,9 @@ def main():
         )
 
         if args.nodelist:
-            executor.update_parameters(slurm_additional_parameters = {"nodelist": f'{args.nodelist}' })
+            executor.update_parameters(
+                slurm_additional_parameters = {
+                    "nodelist": f'{args.nodelist}' })
 
         executor.update_parameters(name=args.model)
         trainer = SLURM_Trainer(args)
@@ -347,7 +434,8 @@ def train(gpu, args):
     print(f'Process {gpu} is using device {args.device}')
     
     # === DATA === #
-    get_dataset = getattr(__import__("lib.datasets.{}".format(args.dataset), fromlist=["get_dataset"]), "get_dataset")
+    get_dataset = getattr(__import__("lib.datasets.{}".format(args.dataset),
+                                     fromlist=["get_dataset"]), "get_dataset")
     
     # read the list of training/test filenames
     with open(args.datafile, 'r') as f:
@@ -393,58 +481,69 @@ def train(gpu, args):
     valid_dataset = get_dataset(valid_filenames, args)
 
    
-    #train_sampler = DistributedSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
-    #test_sampler = DistributedSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31)
+    # train_sampler = DistributedSampler(train_dataset,
+    #                                    shuffle=args.shuffle,
+    #                                    num_replicas = args.world_size,
+    #                                    rank = args.rank, seed = 31)
+    # test_sampler = DistributedSampler(test_dataset,
+    #                                   shuffle=args.shuffle,
+    #                                   num_replicas = args.world_size,
+    #                                   rank = args.rank, seed = 31)
 
-    train_sampler = TurbSampler(train_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
-    test_sampler = TurbSampler(test_dataset, shuffle=args.shuffle, num_replicas = args.world_size, rank = args.rank, seed = 31, drop_last=args.drop_last)
+    train_sampler = TurbSampler(train_dataset,
+                                shuffle=args.shuffle,
+                                num_replicas=args.world_size,
+                                rank=args.rank,
+                                seed=31,
+                                drop_last=args.drop_last)
+    test_sampler = TurbSampler(test_dataset,
+                               shuffle=args.shuffle,
+                               num_replicas=args.world_size,
+                               rank=args.rank,
+                               seed=31,
+                               drop_last=args.drop_last)
 
 
     train_loader = DataLoader(dataset=train_dataset, 
-                            sampler = train_sampler,
+                            sampler=train_sampler,
                             batch_size=args.batch_per_task, 
                             num_workers= args.workers,
-                            pin_memory = True,
-                            drop_last = args.drop_last
-                            )
+                            pin_memory=True,
+                            drop_last=args.drop_last)
 
     test_loader = DataLoader(dataset=test_dataset, 
-                            sampler = test_sampler,
+                            sampler=test_sampler,
                             batch_size=args.batch_per_task, 
-                            num_workers= args.workers,
-                            pin_memory = True,
-                            drop_last = args.drop_last
-                            )
+                            num_workers=args.workers,
+                            pin_memory=True,
+                            drop_last=args.drop_last)
 
     valid_loader = DataLoader(dataset=valid_dataset,
                                 batch_size=args.batch_per_task,
-                                num_workers= args.workers,
-                                pin_memory = True,
-                                drop_last = args.drop_last,
-                                shuffle=False   
-    )
+                                num_workers=args.workers,
+                                pin_memory=True,
+                                drop_last=args.drop_last,
+                                shuffle=False)
 
     scaler_loader = DataLoader(dataset=train_dataset,
                                 batch_size=args.batch_per_task,
-                                num_workers= args.workers,
-                                pin_memory = True,
-                                drop_last = args.drop_last,
-                                shuffle=False   
-    )
+                                num_workers=args.workers,
+                                pin_memory=True,
+                                drop_last=args.drop_last,
+                                shuffle=False)
 
     print(f"Data loaded")
-    
-
-    #print('Normalization constants:')
-    #print(f'X_mean: {dataset.X_mean} | X_std: {dataset.X_std}')
-    #print(f'y_mean: {dataset.y_mean} | y_std: {dataset.y_std}')
-    
+        
     # === MODEL === #
-    get_model = getattr(__import__("lib.arch.{}".format(args.arch), fromlist=["get_model"]), "get_model")
+    get_model = getattr(__import__("lib.arch.{}".format(args.arch),
+                                   fromlist=["get_model"]), "get_model")
     model = get_model(args)
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    trainable_params = sum(
+        p.numel() for p in model.parameters() if p.requires_grad)
+    
     print()
-    print(f'{args.arch} trainable parameters: {trainable_params} in  {args.num_blocks} blocks.')
+    print((f'{args.arch} trainable parameters: {trainable_params} '
+           f'in  {args.num_blocks} blocks.'))
     if args.arch == 'FNet':
         print(f'{args.num_coeffs} trainable spectral coefficients per block.')
     elif args.arch == 'WNet':
@@ -454,11 +553,13 @@ def train(gpu, args):
         else:
             w = pywt.Wavelet(args.wavelet)
             num_levels = pywt.dwt_max_level(args.n, w)
-        print(f'Number of trainable wavelet levels: {num_levels}/{int(np.log2(args.n))}')
+        print((f'Number of trainable wavelet levels: '
+               f'{num_levels}/{int(np.log2(args.n))}'))
         print()
         
     if args.dev == 'gpu':
-        model = nn.SyncBatchNorm.convert_sync_batchnorm(model) # use if model contains batchnorm.
+        # use if model contains batchnorm.
+        model = nn.SyncBatchNorm.convert_sync_batchnorm(model) 
 
     device_ids = None
     if args.slurm:
@@ -478,7 +579,10 @@ def train(gpu, args):
     if args.arch == 'WNet':
         find_unused_parameters = True
         
-    model = nn.parallel.DistributedDataParallel(model, device_ids=device_ids, find_unused_parameters=find_unused_parameters)
+    model = nn.parallel.DistributedDataParallel(
+        model,
+        device_ids=device_ids,
+        find_unused_parameters=find_unused_parameters)
     # model = torch.compile(model)
     
     # === LOSS === #
@@ -493,10 +597,19 @@ def train(gpu, args):
     scaler.fit()
     
     # === TRAINING === #
-    Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer), fromlist=["Trainer"]), "Trainer")
+    Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer),
+                                 fromlist=["Trainer"]), "Trainer")
     
     if args.predict:
-        Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset, scaler).load_if_available()
+        Trainer(args,
+                train_loader,
+                test_loader,
+                valid_loader,
+                model,
+                loss,
+                optimizer,
+                train_dataset,
+                scaler).load_if_available()
         
         print(f"Model loaded")
         print()
@@ -508,17 +621,30 @@ def train(gpu, args):
         print(f"Model loaded")
         print()
         
-        train_losses, test_losses, valid_loss = Trainer(args, train_loader, test_loader, valid_loader, model, loss, optimizer, train_dataset, scaler).fit()
+        train_losses, test_losses, valid_loss = Trainer(args,
+                                                        train_loader,
+                                                        test_loader,
+                                                        valid_loader,
+                                                        model,
+                                                        loss,
+                                                        optimizer,
+                                                        train_dataset,
+                                                        scaler).fit()
 
         min_test_loss = np.min(np.array(test_losses))
         min_epoch = np.argmin(np.array(test_losses))
         min_train_loss = train_losses[min_epoch]
-        print(f'Minimum test loss {min_test_loss:.5e} @ epoch {min_epoch}, training loss = {min_train_loss:.5e},  validation loss = {valid_loss:.5e}')
+        print((f'Minimum test loss {min_test_loss:.5e} @ epoch {min_epoch}, '
+               f'training loss = {min_train_loss:.5e}, '
+               f'validation loss = {valid_loss:.5e}'))
         with open(os.path.join(args.out, 'losses.dat'), 'w') as f:
-            f.write(f'{args.alpha} {min_epoch} {min_test_loss} {min_train_loss} {valid_loss}')
+            f.write((f'{args.alpha} {min_epoch} {min_test_loss} '
+                     f'{min_train_loss} {valid_loss}'))
 
     plot_histograms(valid_loader, model, train_dataset, scaler, args)
-    plot_results(args, model, train_losses, test_losses, train_dataset, valid_loader, scaler)
+    plot_results(args, model, train_losses, test_losses,
+                 train_dataset, valid_loader, scaler)
+    
     if args.arch == 'FNet':
         plot_FNet(model, args)
     

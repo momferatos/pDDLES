@@ -27,7 +27,8 @@ class dummy:
     
 class Trainer:
 
-    def __init__(self, args, train_loader, test_loader, valid_loader, model, loss, optimizer, dataset, scaler):
+    def __init__(self, args, train_loader, test_loader, valid_loader,
+                 model, loss, optimizer, dataset, scaler):
 
         self.args = args
         self.train_gen = train_loader
@@ -64,7 +65,8 @@ class Trainer:
         train_div = 0.0
         train_loss = 0.0
         test_loss = 0.0
-        for it, input_data in enumerate(metric_logger.log_every(self.train_gen, 10, args, header)):
+        for it, input_data in enumerate( \
+                metric_logger.log_every(self.train_gen, 10, args, header)):
             # === Global Iteration === #
             it = len(self.train_gen) * epoch + it
 
@@ -101,7 +103,9 @@ class Trainer:
 
             # Sanity Check
             if not math.isfinite(loss.item()):
-                print("Training loss is {}, stopping training".format(loss.item()), force=True)
+                print(
+                    "Training loss is {}, stopping training".format(
+                        loss.item()), force=True)
                 sys.exit(1)
             
             # === Backward pass === #
@@ -134,7 +138,9 @@ class Trainer:
 
         with torch.no_grad():
             test_metric_logger = MetricLogger(args, delimiter="  ")
-            for it, input_data in enumerate(test_metric_logger.log_every(self.test_gen, 10, args, header)):
+            for it, input_data in enumerate( \
+                    test_metric_logger.log_every(self.test_gen, 10, args,
+                                                 header)):
 
                 # === Global Iteration === #
                 it = len(self.train_gen) * epoch + it
@@ -170,7 +176,9 @@ class Trainer:
                     # dist.all_reduce(test_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):
-                    print("Test loss is {}, stopping training".format(loss.item()), force=True)
+                    print(
+                        "Test loss is {}, stopping training".format(
+                            loss.item()), force=True)
                     sys.exit(1)
 
                 # === Logging === #
@@ -180,14 +188,18 @@ class Trainer:
                 test_metric_logger.update(test_div=div.item())
 
                 if self.args.main:
-                    self.loss_writer(test_metric_logger.meters['test_loss'].value, it)
-                    self.loss_writer(test_metric_logger.meters['test_div'].value, it)
+                    self.loss_writer(
+                        test_metric_logger.meters['test_loss'].value, it)
+                    self.loss_writer(
+                        test_metric_logger.meters['test_div'].value, it)
 
             test_metric_logger.synchronize_between_processes()
             print("Averaged stats:", test_metric_logger)
 
-            self.test_losses.append(test_metric_logger.meters['test_loss'].value)
-            self.train_losses.append(metric_logger.meters['train_loss'].value)
+            self.test_losses.append(
+                test_metric_logger.meters['test_loss'].value)
+            self.train_losses.append(
+                metric_logger.meters['train_loss'].value)
 
     def fit(self):
 
@@ -196,7 +208,8 @@ class Trainer:
 
         # === Schedules === #
         lr_schedule = constant_scheduler(
-                        base_value = self.args.lr_start, # * (self.args.batch_per_task * self.args.world_size) / 256.,
+                        base_value = self.args.lr_start,
+            # * (self.args.batch_per_task * self.args.world_size) / 256.,
                         final_value = self.args.lr_end,
                         epochs = self.args.epochs,
                         niter_per_ep = len(self.train_gen),
@@ -219,7 +232,9 @@ class Trainer:
             val_div = 0.0
             header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
             val_metric_logger = MetricLogger(self.args, delimiter="  ")
-            for it, input_data in enumerate(val_metric_logger.log_every(self.val_gen, 10, self.args, header)):
+            for it, input_data in enumerate( \
+                    val_metric_logger.log_every( \
+                        self.val_gen, 10, self.args, header)):
 
                 # === Global Iteration === #
                 it = len(self.train_gen) * epoch + it
@@ -254,7 +269,9 @@ class Trainer:
                     # dist.all_reduce(val_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):
-                    print("Val loss is {}, stopping training".format(loss.item()), force=True)
+                    print(
+                        "Val loss is {}, stopping training".format(
+                            loss.item()), force=True)
                     sys.exit(1)
 
                 # === Logging === #
@@ -264,8 +281,10 @@ class Trainer:
                 val_metric_logger.update(val_div=div.item())
 
                 if self.args.main:
-                    self.loss_writer(val_metric_logger.meters['val_loss'].value, it)
-                    self.loss_writer(val_metric_logger.meters['val_div'].value, it)
+                    self.loss_writer(
+                        val_metric_logger.meters['val_loss'].value, it)
+                    self.loss_writer(
+                        val_metric_logger.meters['val_div'].value, it)
 
             val_metric_logger.synchronize_between_processes()
             print("Averaged stats:", val_metric_logger)
@@ -278,14 +297,16 @@ class Trainer:
     
     def load_if_available(self):
 
-        ckpts = sorted(glob(f'{self.args.out}/weights/{self.args.model}/Epoch_*.pth'))
+        ckpts = sorted(
+            glob(f'{self.args.out}/weights/{self.args.model}/Epoch_*.pth'))
 
         if len(ckpts) >0:
             ckpt = torch.load(ckpts[-1], map_location='cpu')
             self.start_epoch = ckpt['epoch']
             self.model.module.load_state_dict(ckpt['model'])
             self.optimizer.load_state_dict(ckpt['optimizer'])
-            if self.args.fp16: self.fp16_scaler.load_state_dict(ckpt['fp16_scaler'])
+            if self.args.fp16: self.fp16_scaler.load_state_dict(
+                    ckpt['fp16_scaler'])
             print("Loaded ckpt: ", ckpts[-1])
 
         else:
@@ -309,4 +330,8 @@ class Trainer:
                             args = self.args
                         )
 
-            torch.save(state, "{}/weights/{}/Epoch_{}.pth".format(self.args.out, self.args.model, str(epoch).zfill(3) ))
+            torch.save(state,
+                       "{}/weights/{}/Epoch_{}.pth".format(self.args.out,
+                                                           self.args.model,
+                                                           str(epoch).zfill(3)
+                       ))
