@@ -246,6 +246,62 @@ class MinmaxScaler(object):
 
 
         return X_tr, y_tr
+
+class DummyScaler(object):
+    """Datalolader scaler
+       
+
+    Parameters
+    ----------
+    
+
+    Attributes
+    ----------
+    
+    
+    """
+    
+    def __init__(self, dataloader, args):
+            
+        return
+
+
+    def fit(self):
+        """Determine normalization constants
+
+        Parameters
+        ----------
+        train_loder : PyTorch DataLoader
+           Training DataLoader
+
+        Returns:
+           None
+
+        """
+
+        return
+
+    def transform(self, X, y, action):
+        """Normalize minibatch
+
+        Parameters
+        ----------
+        X : 4d/5d tensor
+           Minibatch
+
+        direction: int
+            1 for rescaling to scaled data, -1 for rescaling to unscaled data
+
+        feature : bool
+           If true, X is a feature varible,  else X is a target variable
+
+        Returns:
+           X : 4d/5d tensor
+           Normalized minibatch
+
+        """
+        
+        return X, y
             
     
 def get_scaler(dataloader, args):
@@ -255,5 +311,7 @@ def get_scaler(dataloader, args):
         scaler = NormScaler(dataloader, args)
     elif args.scaler == 'minmax':
         scaler = MinmaxScaler(dataloader, args)
+    elif args.scaler == 'none':
+        scaler = DummyScaler(dataloader, args)
 
     return scaler

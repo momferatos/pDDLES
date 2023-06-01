@@ -43,19 +43,11 @@ class TurbDataset(Dataset):
         self.datadict = {}
         self.indices = []
         
-        # self.filesize = self.count_file_size()
-        # self.datalist = []
-        # if self.filesize > 512.0 or args.noload:
-        #     if self.filenames and args.copy:
-        #         self.copy()
-        # else:
-        #     nfiles = len(filenames)
-        #     for nfile, filename in enumerate(filenames):
-        #         if nfile % 250 == 0:
-        #             print(f'Loading file {nfile}/{nfiles} to memory.')
-        #         y = self.filename_to_tensor(filename)
-        #         self.datalist.append(y)
-            
+        self.filesize = self.count_file_size()
+        self.datalist = []
+        if args.noload:
+            if self.filenames and args.copy:
+                self.copy()            
 
         if filenames:
             filename = self.filenames[0]

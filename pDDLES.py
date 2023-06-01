@@ -226,7 +226,7 @@ def parse_args():
     
     parser.add_argument('-mem_per_node',
                         type=int,
-                        default=256,
+                        default=0,
                         help='SLURM memory per node')
 
     parser.add_argument('-mem',
