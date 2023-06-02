@@ -45,8 +45,8 @@ class TurbDataset(Dataset):
         
         self.filesize = self.count_file_size()
         self.datalist = []
-        if args.noload:
-            if self.filenames and args.copy:
+        if self.args.noload and self.args.dev == 'gpu':
+            if self.filenames and self.args.copy:
                 self.copy()            
 
         if filenames:
@@ -436,7 +436,7 @@ class TurbDataset(Dataset):
     
     def copy(self):
 
-        if not self.filenames or args.localrank !=0:
+        if not self.filenames or self.args.localrank !=0:
             return
         
         dest_dir = os.environ['LOCALSCRATCH']        
