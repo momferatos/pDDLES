@@ -45,8 +45,8 @@ class TurbDataset(Dataset):
         
         self.filesize = self.count_file_size()
         self.datalist = []
-        if self.args.noload and self.args.dev == 'gpu':
-            if self.filenames and self.args.copy:
+        if self.args.noload and self.args.dev == 'gpu' and args.copy:
+            if self.filenames:
                 self.copy()            
 
         if filenames:

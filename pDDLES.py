@@ -57,7 +57,7 @@ def parse_args():
                         help='Prediction mode')
     
     parser.add_argument('-copy',
-                        action='store_false',
+                        action='store_true',
                         help='Copy files to $LOCALSCRATCH')
 
     parser.add_argument('-drop_last',

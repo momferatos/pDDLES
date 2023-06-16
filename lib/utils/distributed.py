@@ -96,6 +96,7 @@ def init_dist_gpu(gpu, args):
         args.output_dir = Path(str(args.output_dir).replace(
             "%j", str(job_env.job_id)))
         args.gpu = job_env.local_rank
+        args.localrank = job_env.local_rank
         args.rank = job_env.global_rank
         nodelist  = os.environ["SLURM_JOB_NODELIST"]
         
