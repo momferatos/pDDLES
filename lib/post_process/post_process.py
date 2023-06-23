@@ -107,10 +107,10 @@ def plot_results(args, model, train_losses, test_losses,
                          label='Prediction $y_p$')
         k_LES_cutoff = args.alpha * np.max(kX)
         plt.axvline(x=k_LES_cutoff, color='red',
-                          linestyle='--', label='LES filter cutoff $2 \pi / Delta$')
+                          linestyle='--', label='LES filter cutoff $2 \pi / \Delta$')
         k_DNS_cutoff = np.sqrt(2.0) / 3.0 * np.max(kX)
         plt.axvline(x=k_DNS_cutoff, color='orange',
-                        linestyle='--', label='DNS resolution cutoff $\simeq 2 \pi / \eta')
+                        linestyle='--', label='DNS resolution cutoff $\simeq 2 \pi / \eta$')
         plt.ylabel('$E(k)$')
         plt.xlabel('Wavenumber $k$')
         plt.legend(loc='best')
@@ -659,8 +659,8 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                 else:
                     hist_xs_pred.append(xp / std)
                     hist_ys_pred.append(yp * std)
-                hist_wvs.append(1.0 / (step * delta_x))
-                hist_steps.append(step)
+            hist_wvs.append(1.0 / (step * delta_x))
+            hist_steps.append(step)
                 
     plt.title('Longitudinal velocity increment PDFs')
     plt.ylabel('$\sigma_{\delta u_L} P(\delta u_L)$')
