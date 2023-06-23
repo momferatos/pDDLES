@@ -1,5 +1,4 @@
-
-#######################################################
+######################################################
 # DDLES: Data-driven model for Large Eddy Simulation  #
 # Georgios Momferatos, 2022-2023                      #
 # g.momferatos@ipta.demokritos.gr                     #
@@ -92,8 +91,35 @@ def plot_results(args, model, train_losses, test_losses,
         aux = X[-1].to('cpu')
         kX, sX = spectrum(aux, args)
 
-        fig, axs = plt.subplots(3, 3, figsize=(15, 10))
+        fig = plt.figure(figsize=(15, 10))
+        plt.plot(train_losses, label='Training loss')
+        plt.plot(test_losses, label='Test loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('MSE loss')
+        plt.title('Training/Test losses')
+        plt.legend(loc='best')
+        plt.savefig(os.path.join(args.out, 'losses.png'))
 
+        fig = plt.figure(figsize=(15, 10))
+        plt.loglog(kX, sX, color='blue', label='Feature $X$')
+        plt.loglog(ky, sy, color='green', label='Target $y$')
+        plt.loglog(ky_pred, sy_pred, color='black',
+                         label='Prediction $y_p$')
+        k_LES_cutoff = args.alpha * np.max(kX)
+        plt.axvline(x=k_LES_cutoff, color='red',
+                          linestyle='--', label='LES filter cutoff $2 \pi / Delta$')
+        k_DNS_cutoff = np.sqrt(2.0) / 3.0 * np.max(kX)
+        plt.axvline(x=k_DNS_cutoff, color='orange',
+                        linestyle='--', label='DNS resolution cutoff $\simeq 2 \pi / \eta')
+        plt.ylabel('$E(k)$')
+        plt.xlabel('Wavenumber $k$')
+        plt.legend(loc='best')
+        plt.title('Energy spectra')
+        plt.savefig(os.path.join(args.out, 'spectrum.png'))
+        
+        fig, axs = plt.subplots(3, 3, figsize=(15, 10))
+        
+        
         aux = batch_to_numpy(X, dataset)
         axs[0, 0].imshow(aux[-1], cmap=cmap)
         title = 'Feature X'
@@ -567,9 +593,8 @@ def predict(model, prediction_filenames, args, prediction_dataset,
 
 def plot_histograms(dataloader, model, dataset, scaler, args):
 
-    fig, axs = plt.subplots(2, 1, figsize=(15, 10))
-    axs[0].set_yscale('log')
-    axs[1].set_yscale('log')
+    fig = plt.figure(figsize=(15, 10))
+    plt.yscale('log')
     nbatches = len(dataloader)
 
     with torch.no_grad():
@@ -587,6 +612,14 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         
         maxstep = int(np.log2(args.n))
 
+        hist_xs = []
+        hist_ys = []
+        hist_xs_pred = []
+        hist_ys_pred = []
+        hist_wvs = []
+        hist_steps = []
+        delta_x = 2.0 * np.pi 
+        
         colors = ('red', 'green', 'blue', 'cyan', 'magenta', 'orange', 'purple', 'pink', 'yellow', 'gray', 'gold')
         for istep in range(0, maxstep):
             step = 2 ** istep
@@ -613,21 +646,75 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                 yp = yp.to('cpu').numpy()
                 
                 if var == 'Target':
-                    label = f'{var}: incr= {step}'
+                    label = f'$r = {step}~\Delta x$'
                 else:
                     label = None
                    
-                axs[0].plot(xp / std, yp * std ,
-                            style, color=color, label=label)
-                
-    axs[0].set_title('Longitudinal velocity increment PDFs')
-    axs[0].set_ylabel('$\sigma_{\delta u^L} P(\delta u^L)$')
-    axs[0].set_xlabel('$\delta u_L / \sigma_{\delta u^L}$')
-    xp = np.linspace(-6.0, 6.0, args.n)
-    axs[0].plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2),
-                '.', color='black', label='Gaussian')
-    axs[0].legend(loc='best')
+                plt.plot(xp / std, yp * std ,
+                         style, color=color, label=label)
 
+                if var == 'Target':
+                    hist_xs.append(xp / std)
+                    hist_ys.append(yp * std)
+                else:
+                    hist_xs_pred.append(xp / std)
+                    hist_ys_pred.append(yp * std)
+                hist_wvs.append(1.0 / (step * delta_x))
+                hist_steps.append(step)
+                
+    plt.title('Longitudinal velocity increment PDFs')
+    plt.ylabel('$\sigma_{\delta u_L} P(\delta u_L)$')
+    plt.xlabel('$\delta u_L / \sigma_{\delta u_L}$')
+    xp = np.linspace(-6.0, 6.0, args.n)
+    gauss_x = xp
+    gauss_y = 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2)
+    plt.plot(gauss_x, gauss_y, '.', color='black', label='Gaussian')
+    plt.legend(loc='best')
+    plt.savefig(os.path.join(args.out, 'hist_vel_incrs.png'))
+
+    aux = y[-1].to('cpu')
+    ky, sy = spectrum(aux, args)
+    aux = y_pred[-1].to('cpu')
+    ky_pred, sy_pred = spectrum(aux, args)
+    aux = X[-1].to('cpu')
+    kX, sX = spectrum(aux, args)
+
+    for iplot, (hist_x,
+                hist_y, hist_x_pred, hist_y_pred, hist_wv,
+                hist_step) in enumerate(zip(hist_xs, hist_ys,
+                                            hist_xs_pred,
+                                            hist_ys_pred, hist_wvs,
+                                            hist_steps)):
+        fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+        axs[0].loglog(kX, sX, color='blue', label='Feature $X$')
+        axs[0].loglog(ky, sy, color='green', label='Target $y$')
+        axs[0].loglog(ky_pred, sy_pred, color='black',
+                         label='Prediction $y_p$')
+        k_LES_cutoff = args.alpha * np.max(kX)
+        axs[0].axvline(x=k_LES_cutoff, color='red',
+                          linestyle='--', label='LES filter cutoff $2 \pi / \Delta$')
+        k_DNS_cutoff = np.sqrt(2.0) / 3.0 * np.max(kX)
+        axs[0].axvline(x=k_DNS_cutoff, color='orange',
+                        linestyle='--', label='DNS resolution cutoff $\simeq 2 \pi / \eta$')
+        axs[0].axvline(x=hist_wv, color='purple',
+                          linestyle='--', label='increment wavenumber $ 2 \pi / r$')
+        axs[0].set_ylabel('$E(k)$')
+        axs[0].set_xlabel('Wavenumber $k$')
+        axs[0].legend(loc='best')
+        axs[0].set_title('Energy spectra')
+
+        axs[1].set_yscale('log')
+        axs[1].plot(hist_x, hist_y, color='purple', label = f'$P(\delta u_L(r)), r = {hist_step}~\Delta x$')
+        axs[1].plot(hist_x_pred, hist_y_pred, '--', color='purple', label = 'Prediction')
+        axs[1].plot(gauss_x, gauss_y, '.', color='black', label = 'Gaussian distribution')
+        axs[1].set_title(f'Longitudinal velocity increment PDFs, $r = {hist_step}~\Delta x$')
+        axs[1].set_ylabel('$\sigma_{\delta u_L} P(\delta u_L)$')
+        axs[1].set_xlabel('$\delta u_L / \sigma_{\delta u_L}$')
+        axs[1].legend(loc='best')
+        plt.savefig(os.path.join(args.out, f'hist_vel_incr_{iplot:03d}.png'))
+    
+    fig = plt.figure(figsize=(15, 10))
+    plt.yscale('log')
     for data, label, style in zip((y, y_pred), \
                                    ('Target', 'Prediction'), ('-', '--')):
         lgrads = dataset.longitudinal_gradients(data)
@@ -637,11 +724,16 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         xp = xp.to('cpu').numpy()
         xp = 0.5 *(xp[1:] + xp[:-1])
         yp = yp.to('cpu').numpy()
-        axs[1].plot(xp / std, yp * std , style, color='black', label=label)
-        axs[1].set_title('Longitudinal velocity gradient PDFs')
-        axs[1].set_ylabel('$\sigma P(\partial u / \partial x)$')
-        axs[1].set_xlabel('$(\partial u / \partial x)/\sigma$')
-        axs[1].legend(loc='best')
-    plt.savefig(os.path.join(args.out, 'hist.png'))
+        plt.plot(xp / std, yp * std , style, color='black', label=label)
+        plt.title('Longitudinal velocity gradient PDFs')
+        plt.ylabel('$\sigma P(\partial u / \partial x)$')
+        plt.xlabel('$(\partial u / \partial x)/\sigma$')
+    
+    xp = np.linspace(-6.0, 6.0, args.n)
+    plt.plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2),
+                '.', color='black', label='Gaussian')
+    plt.legend(loc='best')
+    
+    plt.savefig(os.path.join(args.out, 'hist_vel_grad.png'))
     
     return
