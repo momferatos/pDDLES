@@ -354,7 +354,7 @@ def main():
         if not args.tasks_per_node:
             args.tasks_per_node = 4
         args.partition = 'gpu'
-        slurm_additional_parameters = {'gres': f'gpu:{args.tasks_per_node}', 'gpu-bind': f'single:1', 'time': f'{args.timeout}'}    
+        slurm_additional_parameters = {'gres': f'gpu:{args.tasks_per_node}', 'time': f'{args.timeout}'}#,  'gpu-bind': 'single:1}    
     else:
         if not args.tasks_per_node:
             args.tasks_per_node = 16
