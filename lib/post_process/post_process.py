@@ -619,6 +619,16 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         hist_wvs = []
         hist_steps = []
         delta_x = 2.0 * np.pi 
+
+        aux = y[-1].to('cpu')
+        ky, sy = spectrum(aux, args)
+        aux = y_pred[-1].to('cpu')
+        ky_pred, sy_pred = spectrum(aux, args)
+        aux = X[-1].to('cpu')
+        kX, sX = spectrum(aux, args)
+        kmax = np.max(kX)
+        eta = 2.0 * np.pi / kmax
+        delta_x = 2.0 * eta
         
         colors = ('red', 'green', 'blue', 'cyan', 'magenta', 'orange', 'purple', 'pink', 'yellow', 'gray', 'gold')
         for istep in range(0, maxstep):
@@ -659,7 +669,7 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                 else:
                     hist_xs_pred.append(xp / std)
                     hist_ys_pred.append(yp * std)
-            hist_wvs.append(1.0 / (step * delta_x))
+            hist_wvs.append(2.0 * np.pi / (step * delta_x))
             hist_steps.append(step)
                 
     plt.title('Longitudinal velocity increment PDFs')
@@ -671,13 +681,6 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
     plt.plot(gauss_x, gauss_y, '.', color='black', label='Gaussian')
     plt.legend(loc='best')
     plt.savefig(os.path.join(args.out, 'hist_vel_incrs.png'))
-
-    aux = y[-1].to('cpu')
-    ky, sy = spectrum(aux, args)
-    aux = y_pred[-1].to('cpu')
-    ky_pred, sy_pred = spectrum(aux, args)
-    aux = X[-1].to('cpu')
-    kX, sX = spectrum(aux, args)
 
     for iplot, (hist_x,
                 hist_y, hist_x_pred, hist_y_pred, hist_wv,
