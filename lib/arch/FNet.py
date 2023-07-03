@@ -123,8 +123,11 @@ class FourierBlock(nn.Module):
         out = self.batchnorm(out)
         out = self.actfun(out)
         out = self.dataset.to_helical(out, outdomain='fourier')
+
+        if not self.args.noskip:
+            out = out + x
             
-        return out + x
+        return out
 
 def get_model(args):
 

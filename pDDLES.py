@@ -67,6 +67,11 @@ def parse_args():
     parser.add_argument('-noload',
                         action='store_true',
                         help='Don\'t load data to memory')
+
+    parser.add_argument('-noskip',
+                        action='store_true',
+                        help='No skip connection')
+    
     
     parser.add_argument('-scalar',
                         action='store_true',

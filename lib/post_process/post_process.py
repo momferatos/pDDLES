@@ -91,7 +91,7 @@ def plot_results(args, model, train_losses, test_losses,
         aux = X[-1].to('cpu')
         kX, sX = spectrum(aux, args)
 
-        fig = plt.figure(figsize=(15, 10))
+        fig = plt.figure(figsize=(12.5, 7.5))
         plt.plot(train_losses, label='Training loss')
         plt.plot(test_losses, label='Test loss')
         plt.xlabel('Epoch')
@@ -100,7 +100,7 @@ def plot_results(args, model, train_losses, test_losses,
         plt.legend(loc='best')
         plt.savefig(os.path.join(args.out, 'losses.png'))
 
-        fig = plt.figure(figsize=(15, 10))
+        fig = plt.figure(figsize=(12.5, 7.5))
         plt.loglog(kX, sX, color='blue', label='Feature $X$')
         plt.loglog(ky, sy, color='green', label='Target $y$')
         plt.loglog(ky_pred, sy_pred, color='black',
@@ -115,9 +115,9 @@ def plot_results(args, model, train_losses, test_losses,
         plt.xlabel('Wavenumber $k$')
         plt.legend(loc='best')
         plt.title('Energy spectra')
-        plt.savefig(os.path.join(args.out, 'spectrum.png'))
+        plt.savefig(os.path.join(args.out, 'spectra.png'))
         
-        fig, axs = plt.subplots(3, 3, figsize=(15, 10))
+        fig, axs = plt.subplots(3, 3, figsize=(15, 15))
         
         
         aux = batch_to_numpy(X, dataset)
@@ -593,7 +593,7 @@ def predict(model, prediction_filenames, args, prediction_dataset,
 
 def plot_histograms(dataloader, model, dataset, scaler, args):
 
-    fig = plt.figure(figsize=(15, 10))
+    fig = plt.figure(figsize=(10.0, 7.5))
     plt.yscale('log')
     nbatches = len(dataloader)
 
@@ -688,7 +688,7 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                                             hist_xs_pred,
                                             hist_ys_pred, hist_wvs,
                                             hist_steps)):
-        fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+        fig, axs = plt.subplots(1, 2, figsize=(20.0, 7.5))
         axs[0].loglog(kX, sX, color='blue', label='Feature $X$')
         axs[0].loglog(ky, sy, color='green', label='Target $y$')
         axs[0].loglog(ky_pred, sy_pred, color='black',
@@ -716,7 +716,7 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         axs[1].legend(loc='best')
         plt.savefig(os.path.join(args.out, f'hist_vel_incr_{iplot:03d}.png'))
     
-    fig = plt.figure(figsize=(15, 10))
+    fig = plt.figure(figsize=(10.0, 7.5))
     plt.yscale('log')
     for data, label, style in zip((y, y_pred), \
                                    ('Target', 'Prediction'), ('-', '--')):
