@@ -1,9 +1,10 @@
-
 #######################################################
 # DDLES: Data-driven model for Large Eddy Simulation  #
 # Georgios Momferatos, 2022-2023                      #
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
+import os
+import numpy as np
 import torch
 from lib.datasets.TurbDataset import TurbDataset
 
@@ -91,7 +92,8 @@ class NormScaler(object):
         self.X_std = X_std.to(torch.float32).to(self.device)
         self.y_mean = y_mean.to(torch.float32).to(self.device)
         self.y_std = y_std.to(torch.float32).to(self.device)
-                
+
+        
         return
 
     def transform(self, X, y, action):
@@ -133,6 +135,33 @@ class NormScaler(object):
 
         return X_tr, y_tr
 
+    
+    def store(self, args):
+        fname = os.path.join(args.h5path, 'norm.pt')
+        tens = {'seed': torch.Tensor([args.seed]), 'vals': torch.stack([self.X_mean, self.X_std, self.y_mean, self.y_std])}
+        torch.save(tens, fname)
+
+        return
+    
+    def load(self, args):
+        fname = os.path.join(args.h5path, 'norm.pt')
+        if os.path.isfile(fname):
+            tens = torch.load(fname)
+            seed = int(tens['seed'].item())
+            if seed != args.seed:
+                return
+            else:
+                tens = torch.load(fname)
+        else:
+            return
+
+        self.X_mean = tens['vals'][0].to(torch.float32).to(self.device)
+        self.X_std = tens['vals'][1].to(torch.float32).to(self.device)
+        self.y_mean = tens['vals'][2].to(torch.float32).to(self.device)
+        self.y_std = tens['vals'][3].to(torch.float32).to(self.device)
+
+        return 1
+                       
 class MinmaxScaler(object):
     """Datalolader scaler
        
@@ -247,6 +276,7 @@ class MinmaxScaler(object):
 
         return X_tr, y_tr
 
+    
 class DummyScaler(object):
     """Datalolader scaler
        

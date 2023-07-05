@@ -445,7 +445,9 @@ def train(gpu, args):
     # read the list of training/test filenames
     with open(args.datafile, 'r') as f:
         filenames = [os.path.abspath(fn.strip()) for fn in list(f)]
-        
+
+    args.h5path = os.path.dirname(os.path.realpath(filenames[-1]))
+    
     # detrmine the size of the DNS square/cube, N
     with h5py.File(filenames[0], 'r') as h5file:
         keys = h5file.keys()
@@ -467,7 +469,8 @@ def train(gpu, args):
     ntrain_test = int(0.8 * num_files)
     ntrain = int(0.6 * num_files)
     g = torch.Generator()
-    g.manual_seed(777)
+    args.seed = 777
+    g.manual_seed(args.seed)
     indices = torch.randperm(num_files, generator=g).tolist()  
     train_filenames = []
     for i in range(ntrain):
@@ -599,7 +602,12 @@ def train(gpu, args):
     optimizer = get_optimizer(model, args)
 
     scaler = get_scaler(scaler_loader, args)
-    scaler.fit()
+    
+    if not scaler.load(args):
+        scaler.fit()
+    else:
+        print('Scaler values loaded from file.')
+    scaler.store(args)
     
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer),
