@@ -728,7 +728,7 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         xp = 0.5 *(xp[1:] + xp[:-1])
         yp = yp.to('cpu').numpy()
         plt.plot(xp / std, yp * std , style, color='black', label=label)
-        plt.title('Longitudinal velocity gradient PDFs')
+        plt.title('Velocity gradient PDFs')
         plt.ylabel('$\sigma P(\partial u / \partial x)$')
         plt.xlabel('$(\partial u / \partial x)/\sigma$')
     
