@@ -91,7 +91,9 @@ def parse_args():
     parser.add_argument('-gpus',
                         type=str,
                         default="0",
-                        help='GPUs list, only works if not on slurm')
+                        help='Comma-separated GPU list for non-slurm runs; '
+                        'one process per GPU (default "0" = one GPU). '
+                        'e.g. "0,1,2,3"')
 
     parser.add_argument('-cfg',
                         type =str,

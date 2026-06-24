@@ -73,9 +73,13 @@ def init_dist_node(args):
             
     else:
 
-#        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
         if args.dev == 'gpu':
-            args.ngpus_per_node = torch.cuda.device_count()
+            # One process per GPU listed in -gpus (default '0' => a single
+            # GPU). Set CUDA_VISIBLE_DEVICES before any CUDA call so the listed
+            # GPUs are remapped to cuda:0..N-1, matching the local index used
+            # to assign each process its device.
+            os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
+            args.ngpus_per_node = len(args.gpus.split(','))
         else:
             args.ngpus_per_node = args.tasks_per_node
 
@@ -122,12 +126,19 @@ def init_dist_gpu(gpu, args):
     
     if args.dev == 'gpu':
         backend = 'nccl'
+        # Bind this rank's process group to the device its tensors live on
+        # (set in train() before this call). Without device_id, collectives
+        # like barrier() warn and guess the device from the current context.
+        device_id = torch.device(args.device)
+        torch.cuda.set_device(device_id)
     else:
         backend = 'gloo'
-    
+        device_id = None
+
     dist.init_process_group(
-        backend=backend, world_size=args.world_size, rank=args.rank)
-    #init_method=args.dist_url 
+        backend=backend, world_size=args.world_size, rank=args.rank,
+        device_id=device_id)
+    #init_method=args.dist_url
 
     fix_random_seeds()
 

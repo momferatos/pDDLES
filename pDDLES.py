@@ -111,7 +111,10 @@ def train(gpu, args):
         if args.slurm:
             args.device = 'cuda:0'
         else:
-            args.device = torch.device('cuda', args.rank)
+            # use the local process index, not args.rank: rank is still 0 here
+            # (it gets its per-process value later in init_dist_gpu), so using
+            # it would put every process on cuda:0.
+            args.device = torch.device('cuda', gpu)
     else:
         args.device = torch.device('cpu', args.rank)
             
