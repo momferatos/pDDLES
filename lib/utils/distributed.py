@@ -148,7 +148,17 @@ def init_dist_gpu(gpu, args):
 
     args.main = (args.rank == 0)
     setup_for_distributed(args.main)
-	
+
+def cleanup_distributed():
+    """Tear down the process group on exit.
+
+    Without this, NCCL warns about leaked resources at program exit. The
+    barrier makes all ranks finish before any of them destroys the group.
+    """
+    if is_dist_avail_and_initialized():
+        dist.barrier()
+        dist.destroy_process_group()
+
 def handle_sigusr1(signum, frame):
     os.system(f'scontrol requeue {os.getenv("SLURM_JOB_ID")}')
     exit()

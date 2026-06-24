@@ -8,7 +8,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
 
 from lib.utils.distributed import init_dist_node, init_dist_gpu, \
-    get_shared_folder
+    get_shared_folder, cleanup_distributed
 
 import submitit, random, sys
 from pathlib import Path
@@ -354,7 +354,9 @@ def train(gpu, args):
     
     if args.arch == 'FNet':
         plot_FNet(model, args)
-    
+
+    cleanup_distributed()
+
     return
 
 
