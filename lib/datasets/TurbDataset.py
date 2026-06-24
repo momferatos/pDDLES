@@ -148,6 +148,47 @@ class TurbDataset(Dataset):
         return y
 
 
+    def _wave_magnitudes(self, n):
+        """Wavevector-magnitude grid for resolution n (cached on CPU).
+
+        Depends only on n and args.dimensions, both fixed, so build it once
+        and reuse instead of rebuilding fftfreq grids on every call.
+        """
+        cache = getattr(self, '_wvms_cache', None)
+        if cache is not None and cache[0] == n:
+            return cache[1]
+        wvs = torch.fft.fftfreq(n)
+        rwvs = torch.fft.rfftfreq(n)
+        wvs2d = torch.sqrt(wvs.view(1, -1, 1) ** 2 +
+                           rwvs.view(1, 1, -1) ** 2)
+        wvs3d = torch.sqrt(wvs.view(-1, 1, 1) ** 2 +
+                           wvs.view(1, -1, 1) ** 2 +
+                           rwvs.view(1, 1, -1) ** 2)
+        wvms = wvs2d if self.args.dimensions == 2 else wvs3d
+        self._wvms_cache = (n, wvms)
+        return wvms
+
+    def _truncation_mask(self, n, device):
+        """Patterson-Orszag dealiasing mask (cached per n and device)."""
+        cache = getattr(self, '_trunc_mask_cache', None)
+        if cache is not None and cache[0] == n and cache[1] == device:
+            return cache[2]
+        wvms = self._wave_magnitudes(n)
+        beta = np.sqrt(2.0) / 3.0 # truncation factor
+        mask = (wvms > beta * wvms.max()).squeeze(0).to(device)
+        self._trunc_mask_cache = (n, device, mask)
+        return mask
+
+    def _les_filter_mask(self, n, device):
+        """Sharp-cutoff LES filter mask (cached per n and device)."""
+        cache = getattr(self, '_les_mask_cache', None)
+        if cache is not None and cache[0] == n and cache[1] == device:
+            return cache[2]
+        wvms = self._wave_magnitudes(n)
+        mask = (wvms > self.args.alpha * torch.max(wvms)).to(device)
+        self._les_mask_cache = (n, device, mask)
+        return mask
+
     def truncate(self, x):
         """Truncate a batch to DNS resolution
 
@@ -164,25 +205,10 @@ class TurbDataset(Dataset):
         """
 
         n = x.shape[-2] # get DNS square linear resolution
-        dims = (-2, -1) if self.args.dimensions == 2 else (-3, -2, -1)
-        wvs = torch.fft.fftfreq(n) # wavenumbers
-        rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
-        # define wavevector magnintudes
-        wvs2d = torch.sqrt(wvs.view(1, -1, 1) ** 2 +
-                           rwvs.view(1, 1, -1) ** 2)
-        wvs3d = torch.sqrt(wvs.view(-1, 1, 1) ** 2 +
-                           wvs.view(1, -1, 1) ** 2 +
-                           rwvs.view(1, 1, -1) ** 2)
-        wvms = wvs2d if self.args.dimensions == 2 else wvs3d
-        kmax = wvms.max() # maximum wavevector
-        beta = np.sqrt(2.0) / 3.0 # truncation factor
-        # apply truncation mask
-        mask = wvms > beta * kmax
-        mask = mask.squeeze(0)
         fout = torch.fft.rfftn(x, dim=self.dims, norm='ortho')
+        mask = self._truncation_mask(n, fout.device) # cached dealiasing mask
         fout[..., mask] = 0.0
         out = torch.fft.irfftn(fout, dim=self.dims, norm='ortho')
-
 
         return out
 
@@ -203,30 +229,22 @@ class TurbDataset(Dataset):
         """
 
         n = y.shape[-2] # get DNS square linear resolution
-        # dims = (-2, -1) if self.args.dimensions == 2 else (-3, -2, -1)
-        dims = (-3, -2, -1)
         # forward real-to-half-complex FFT
-        fy = torch.fft.rfftn(y, dim=self.dims, norm='ortho') 
-        wvs = torch.fft.fftfreq(n) # wavenumbers
-        rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
-        # wavevector magnitudes
-        wvs2d = torch.sqrt(wvs.view(1, -1, 1) ** 2 +
-                           rwvs.view(1, 1, -1) ** 2)
-        wvs3d = torch.sqrt(wvs.view(-1, 1, 1) ** 2 +
-                           wvs.view(1, -1, 1) ** 2 +
-                           rwvs.view(1, 1, -1) ** 2)
-        wvms = wvs2d if self.args.dimensions == 2 else wvs3d
-        wvmax = torch.max(wvms) # maximum wavevector magnitude
-        mask = wvms > self.args.alpha * wvmax # define filter mask
+        fy = torch.fft.rfftn(y, dim=self.dims, norm='ortho')
+        mask = self._les_filter_mask(n, fy.device) # cached filter mask
         fy[..., mask] = 0.0 # apply filter
         # inverse half-complex-to-real FFT
-        y = torch.fft.irfftn(fy, dim=self.dims, norm='ortho') 
+        y = torch.fft.irfftn(fy, dim=self.dims, norm='ortho')
 
         return y
 
     def wave_vectors(self, n):
 
-        dims = (-3, -2, -1)
+        # k and kappa depend only on n and device, both fixed: build once.
+        cache = getattr(self, '_wave_vectors_cache', None)
+        if cache is not None and cache[0] == n:
+            return cache[1], cache[2]
+
         wvs = torch.fft.fftfreq(n) # wavenumbers
         rwvs = torch.fft.rfftfreq(n) # wavenumbers of real-to-half-complex dim
 
@@ -237,7 +255,7 @@ class TurbDataset(Dataset):
         kappa1 = k1 / kmag
         kappa2 = k2 / kmag
         kappa3 = k3 / kmag
-        
+
         # batch of wavevectors
         k = torch.stack([k1, k2, k3])
 
@@ -246,6 +264,7 @@ class TurbDataset(Dataset):
 
         k = k.to(self.device)
         kappa = kappa.to(self.device)
+        self._wave_vectors_cache = (n, k, kappa)
         return k, kappa
 
     def helical_checks(self, X):

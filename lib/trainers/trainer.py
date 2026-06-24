@@ -17,14 +17,12 @@ import torch.distributed as dist
 from lib.utils.file import checkdir
 from lib.utils.tensorboard import get_writer, TBWriter
 from lib.core.scheduler import cosine_scheduler, constant_scheduler
-from lib.utils.distributed import MetricLogger
+from lib.utils.distributed import MetricLogger, is_dist_avail_and_initialized
 from glob import glob
 import math
+import sys
 
-class dummy:
-    def init(self):
-        return
-    
+
 class Trainer:
 
     def __init__(self, args, train_loader, test_loader, valid_loader,
@@ -39,7 +37,7 @@ class Trainer:
         self.optimizer = optimizer
         self.dataset = dataset
         self.scaler = scaler
-        self.fp16_scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
+        self.fp16_scaler = torch.amp.GradScaler('cuda') if args.fp16 else None
         self.test_losses = []
         self.train_losses = []
         self.val_loss = 0.0
@@ -56,6 +54,19 @@ class Trainer:
             checkdir("{}/weights/{}/".format(args.out, self.args.model), args.reset)
 
 
+    def _global_max(self, value):
+        """Reduce a scalar to its global maximum across all ranks.
+
+        Divergence is tracked as a per-rank running max; this collapses it to
+        the true max over the whole distributed batch. No-op without dist.
+        """
+        if not is_dist_avail_and_initialized():
+            return float(value)
+        t = torch.as_tensor(float(value), dtype=torch.float64,
+                             device=self.device)
+        dist.all_reduce(t, op=dist.ReduceOp.MAX)
+        return t.item()
+
     def train_one_epoch(self, epoch, lr_schedule, args):
 
         metric_logger = MetricLogger(args, delimiter="  ")
@@ -63,8 +74,6 @@ class Trainer:
         
         test_div = 0.0
         train_div = 0.0
-        train_loss = 0.0
-        test_loss = 0.0
         for it, input_data in enumerate( \
                 metric_logger.log_every(self.train_gen, 10, args, header)):
             # === Global Iteration === #
@@ -75,9 +84,9 @@ class Trainer:
 
             
             # === Inputs === #
-            if args.device == 'gpu':
+            if args.dev == 'gpu':
                 input_data = input_data.cuda(non_blocking=True)
-                autocast = torch.cuda.amp.autocast(self.args.fp16)
+                autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
             else:
                 autocast = torch.autocast(device_type='cpu')
                 
@@ -95,11 +104,11 @@ class Trainer:
                 labels = y
                 
                 loss = self.loss(preds, labels)
-                
-                train_loss += loss
-                div = self.dataset.divergence(preds)
+
+                # detach: div is logged only, never backpropped, so it must
+                # not pin preds' autograd graph across iterations.
+                div = self.dataset.divergence(preds).detach()
                 train_div = max(div, train_div)
-                # dist.all_reduce(train_div, op=dist.ReduceOp.MAX)
 
             # Sanity Check
             if not math.isfinite(loss.item()):
@@ -121,7 +130,7 @@ class Trainer:
 
 
             # === Logging === #
-            if args.device == 'gpu':
+            if args.dev == 'gpu':
                 torch.cuda.synchronize()
                 
             metric_logger.update(train_loss=loss.item())
@@ -133,6 +142,8 @@ class Trainer:
                 self.lr_sched_writer(self.optimizer.param_groups[0]["lr"], it)
 
 
+        # reduce the per-rank running max to the global max across ranks
+        metric_logger.update(train_div=self._global_max(train_div))
         metric_logger.synchronize_between_processes()
         print("Averaged stats:", metric_logger)
 
@@ -147,9 +158,9 @@ class Trainer:
 
                 # === Inputs === #
                 
-                if args.device == 'gpu':
+                if args.dev == 'gpu':
                     input_data = input_data.cuda(non_blocking=True)
-                    autocast = torch.cuda.amp.autocast(self.args.fp16)
+                    autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
                 else:
                     autocast = torch.autocast(device_type='cpu')
                     
@@ -171,9 +182,7 @@ class Trainer:
                     labels = y
                     
                     loss = self.loss(preds, labels)
-                    test_loss += loss
                     test_div = max(div, test_div)
-                    # dist.all_reduce(test_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):
                     print(
@@ -182,7 +191,7 @@ class Trainer:
                     sys.exit(1)
 
                 # === Logging === #
-                if args.device == 'gpu':
+                if args.dev == 'gpu':
                     torch.cuda.synchronize()
                 test_metric_logger.update(test_loss=loss.item())
                 test_metric_logger.update(test_div=div.item())
@@ -193,6 +202,8 @@ class Trainer:
                     self.loss_writer(
                         test_metric_logger.meters['test_div'].value, it)
 
+            # reduce the per-rank running max to the global max across ranks
+            test_metric_logger.update(test_div=self._global_max(test_div))
             test_metric_logger.synchronize_between_processes()
             print("Averaged stats:", test_metric_logger)
 
@@ -228,7 +239,6 @@ class Trainer:
 
         print('Calculating validation loss...')
         with torch.no_grad():
-            val_loss = 0.0
             val_div = 0.0
             header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
             val_metric_logger = MetricLogger(self.args, delimiter="  ")
@@ -241,9 +251,9 @@ class Trainer:
 
                 # === Inputs === #
                 
-                if self.args.device == 'gpu':
+                if self.args.dev == 'gpu':
                     input_data = input_data.cuda(non_blocking=True)
-                    autocast = torch.cuda.amp.autocast(self.args.fp16)
+                    autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
                 else:
                     autocast = torch.autocast(device_type='cpu')
                     
@@ -264,9 +274,7 @@ class Trainer:
                     labels = y
                     
                     loss = self.loss(preds, labels)
-                    val_loss += loss
                     val_div = max(div, val_div)
-                    # dist.all_reduce(val_div, op=dist.ReduceOp.MAX)
                 # Sanity Check
                 if not math.isfinite(loss.item()):
                     print(
@@ -275,7 +283,7 @@ class Trainer:
                     sys.exit(1)
 
                 # === Logging === #
-                if self.args.device == 'gpu':
+                if self.args.dev == 'gpu':
                     torch.cuda.synchronize()
                 val_metric_logger.update(val_loss=loss.item())
                 val_metric_logger.update(val_div=div.item())
@@ -286,6 +294,8 @@ class Trainer:
                     self.loss_writer(
                         val_metric_logger.meters['val_div'].value, it)
 
+            # reduce the per-rank running max to the global max across ranks
+            val_metric_logger.update(val_div=self._global_max(val_div))
             val_metric_logger.synchronize_between_processes()
             print("Averaged stats:", val_metric_logger)
             self.val_loss = val_metric_logger.meters['val_loss'].value
@@ -301,7 +311,10 @@ class Trainer:
             glob(f'{self.args.out}/weights/{self.args.model}/Epoch_*.pth'))
 
         if len(ckpts) >0:
-            ckpt = torch.load(ckpts[-1], map_location='cpu')
+            # weights_only=False: our checkpoints embed `args` (numpy scalars,
+            # the activation nn.Module), which the PyTorch>=2.6 safe unpickler
+            # rejects. Safe here since we write these checkpoints ourselves.
+            ckpt = torch.load(ckpts[-1], map_location='cpu', weights_only=False)
             self.start_epoch = ckpt['epoch']
             self.model.module.load_state_dict(ckpt['model'])
             self.optimizer.load_state_dict(ckpt['optimizer'])
@@ -324,14 +337,14 @@ class Trainer:
                             args = self.args
                         )
         else:
-            state = dict(epoch=epoch+1, 
-                            model=self.model.module.state_dict(), 
+            state = dict(epoch=epoch+1,
+                            model=self.model.module.state_dict(),
                             optimizer=self.optimizer.state_dict(),
                             args = self.args
                         )
 
-            torch.save(state,
-                       "{}/weights/{}/Epoch_{}.pth".format(self.args.out,
-                                                           self.args.model,
-                                                           str(epoch).zfill(3)
-                       ))
+        torch.save(state,
+                   "{}/weights/{}/Epoch_{}.pth".format(self.args.out,
+                                                       self.args.model,
+                                                       str(epoch).zfill(3)
+                   ))

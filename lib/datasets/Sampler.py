@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 import math
 import random
@@ -87,13 +88,20 @@ class TurbSampler(DistributedSampler):
         self.dataset.load(indices)
         self.indices = indices
 
-    def __iter__(self): 
-        # Here you need to look how DistributedSampler implements __iter__
-        # https://pytorch.org/docs/stable/_modules/torch/utils/data/
-        # distributed.html#DistributedSampler
-        # Then you can modify it to serve your purposes
-    
-        return iter(self.indices)
+    def __iter__(self):
+        # The per-rank shard (self.indices) is fixed at construction time, since
+        # only those files are loaded into memory by dataset.load(). To still get
+        # per-epoch variation, reshuffle the *order* of this rank's shard each
+        # epoch using seed + epoch (set via set_epoch()).
+        if self.shuffle:
+            g = torch.Generator()
+            g.manual_seed(self.seed + self.epoch)
+            perm = torch.randperm(len(self.indices), generator=g).tolist()
+            indices = [self.indices[i] for i in perm]
+        else:
+            indices = self.indices
+
+        return iter(indices)
     
         
     # If len stays the same you can leave it out, else you can also modify it

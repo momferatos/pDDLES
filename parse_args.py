@@ -1,5 +1,22 @@
 import torch
 import argparse
+import sys
+
+
+def str2bool(v):
+    """argparse type that parses booleans from strings.
+
+    Needed because type=bool runs bool('False') == True, so any non-empty
+    string would be truthy.
+    """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    if v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 def parse_args():
 
@@ -92,9 +109,9 @@ def parse_args():
                         help='batch size per gpu')
 
     parser.add_argument('-shuffle',
-                        type=bool,
+                        type=str2bool,
                         default=True,
-                        help='Shuffle dataset?')
+                        help='Shuffle dataset? (True/False)')
 
     parser.add_argument('-workers',
                         type=int,
@@ -279,7 +296,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    args.actfun = eval(f'torch.nn.{args.actfun}()')
+    args.actfun = getattr(torch.nn, args.actfun)()
 
     # === Read CFG File === #
     if args.cfg:

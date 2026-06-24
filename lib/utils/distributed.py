@@ -131,7 +131,7 @@ def init_dist_gpu(gpu, args):
 
     fix_random_seeds()
 
-    cudnn.Benchmark = False
+    cudnn.benchmark = True
     
     dist.barrier()
 
