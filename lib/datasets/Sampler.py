@@ -69,8 +69,10 @@ class TurbSampler(DistributedSampler):
             indices = list(range(self.length))  # type: ignore[arg-type]
 
         if not self.drop_last:
-            # add extra samples to make it evenly divisible
-            padding_size = self.length - len(indices)
+            # pad up to total_size, not self.length: indices already has
+            # self.length entries, so padding against it was a no-op and the
+            # last rank got a short shard, desynchronizing DDP collectives.
+            padding_size = self.total_size - len(indices)
             if padding_size <= len(indices):
                 indices += indices[:padding_size]
             else:
@@ -78,12 +80,12 @@ class TurbSampler(DistributedSampler):
                     padding_size / len(indices)))[:padding_size]
         else:
             # remove tail of data to make it evenly divisible.
-            indices = indices[:self.length]
-        assert len(indices) == self.length
+            indices = indices[:self.total_size]
+        assert len(indices) == self.total_size
 
-        # subsample
+        # subsample: every rank gets exactly num_samples indices
         start = self.rank * self.num_samples
-        end = min((self.rank + 1) * self.num_samples, self.length)
+        end = (self.rank + 1) * self.num_samples
         indices = indices[start:end]
         self.dataset.load(indices)
         self.indices = indices

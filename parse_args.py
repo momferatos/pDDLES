@@ -38,8 +38,10 @@ def parse_args():
                         help='Copy files to $LOCALSCRATCH')
 
     parser.add_argument('-drop_last',
-                        action='store_false',
-                        help='Drop remainder files in dataloaders')
+                        type=str2bool,
+                        default=True,
+                        help='Drop remainder files in dataloaders '
+                        '(True/False)')
 
     parser.add_argument('-noload',
                         action='store_true',
