@@ -185,10 +185,10 @@ class MinmaxScaler(object):
         self.X_max = 1.0
         self.X_min = 0.0
         self.y_max = 1.0
-        self.X_min = 0.0
+        self.y_min = 0.0
 
         self.device = args.device
-            
+
         return
 
 
@@ -271,12 +271,38 @@ class MinmaxScaler(object):
         if action == 'scale':
             y_tr = (y - bias) / rang
         elif action == 'unscale':
-            y_tr = rang * y + bias    
+            y_tr = rang * y + bias
 
 
         return X_tr, y_tr
 
-    
+
+    def store(self, args):
+        fname = os.path.join(args.h5path, 'minmax.pt')
+        tens = {'seed': torch.Tensor([args.seed]),
+                'vals': torch.tensor([float(self.X_min), float(self.X_max),
+                                      float(self.y_min), float(self.y_max)])}
+        torch.save(tens, fname)
+
+        return
+
+    def load(self, args):
+        fname = os.path.join(args.h5path, 'minmax.pt')
+        if not os.path.isfile(fname):
+            return
+        tens = torch.load(fname)
+        seed = int(tens['seed'].item())
+        if seed != args.seed:
+            return
+
+        self.X_min = tens['vals'][0].to(self.device)
+        self.X_max = tens['vals'][1].to(self.device)
+        self.y_min = tens['vals'][2].to(self.device)
+        self.y_max = tens['vals'][3].to(self.device)
+
+        return 1
+
+
 class DummyScaler(object):
     """Datalolader scaler
        
@@ -330,10 +356,16 @@ class DummyScaler(object):
            Normalized minibatch
 
         """
-        
+
         return X, y
-            
-    
+
+    def store(self, args):
+        return
+
+    def load(self, args):
+        return
+
+
 def get_scaler(dataloader, args):
 
     # === Get Dataset === #
