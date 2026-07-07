@@ -126,8 +126,10 @@ class ResNet(nn.Module):
     
     def forward(self, x):
 
+        # to_helical/from_helical default to the physical domain: they return
+        # and expect the real 2-channel helical field and do the FFTs
+        # internally, so the CNN pipeline runs directly on their output.
         out = self.dataset.to_helical(x)
-        out = torch.fft.irfftn(out, dim=self.dims, norm='ortho')
         out = self.convfirst(out)
         out = self.batchnorm(out)
         out = self.actfun(out)
@@ -135,10 +137,9 @@ class ResNet(nn.Module):
         out = self.convlast(out)
         out = self.batchnormlast(out)
         out = self.actfun(out)
-        out = torch.fft.rfftn(out, dim=self.dims, norm='ortho')
         out = self.dataset.from_helical(out)
         out = self.dataset.truncate(out)
-        
+
         return out
 
 def get_model(args):
