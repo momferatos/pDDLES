@@ -17,7 +17,8 @@ import torch.distributed as dist
 from lib.utils.file import checkdir
 from lib.utils.tensorboard import get_writer, TBWriter
 from lib.core.scheduler import cosine_scheduler, constant_scheduler
-from lib.utils.distributed import MetricLogger, is_dist_avail_and_initialized
+from lib.utils.distributed import MetricLogger, \
+    is_dist_avail_and_initialized, cleanup_distributed
 from glob import glob
 import math
 import sys
@@ -81,6 +82,25 @@ class Trainer:
         dist.all_reduce(t, op=dist.ReduceOp.MAX)
         return t.item()
 
+    def _stop_if_nonfinite(self, value, what):
+        """Collectively stop every rank if any rank's loss is non-finite.
+
+        A bare sys.exit on the offending rank alone leaves the other ranks
+        blocked in their next collective until the backend times out; the
+        MAX all-reduce makes every rank take the same branch together, so
+        they can tear down the process group and exit in unison.
+        """
+        flag = 0.0 if math.isfinite(value) else 1.0
+        if is_dist_avail_and_initialized():
+            t = torch.tensor(flag, dtype=torch.float64, device=self.device)
+            dist.all_reduce(t, op=dist.ReduceOp.MAX)
+            flag = t.item()
+        if flag > 0:
+            print(f'{what} loss is non-finite on some rank '
+                  f'(this rank: {value}), stopping training', force=True)
+            cleanup_distributed()
+            sys.exit(1)
+
     def train_one_epoch(self, epoch, lr_schedule, args):
 
         metric_logger = MetricLogger(args, delimiter="  ")
@@ -125,11 +145,7 @@ class Trainer:
                 train_div = max(div, train_div)
 
             # Sanity Check
-            if not math.isfinite(loss.item()):
-                print(
-                    "Training loss is {}, stopping training".format(
-                        loss.item()), force=True)
-                sys.exit(1)
+            self._stop_if_nonfinite(loss.item(), 'Training')
             
             # === Backward pass === #
             self.model.zero_grad()
@@ -202,11 +218,7 @@ class Trainer:
                     loss = self.loss(preds, labels)
                     test_div = max(div, test_div)
                 # Sanity Check
-                if not math.isfinite(loss.item()):
-                    print(
-                        "Test loss is {}, stopping training".format(
-                            loss.item()), force=True)
-                    sys.exit(1)
+                self._stop_if_nonfinite(loss.item(), 'Test')
 
                 # === Logging === #
                 if args.dev == 'gpu':
@@ -302,11 +314,7 @@ class Trainer:
                     loss = self.loss(preds, labels)
                     val_div = max(div, val_div)
                 # Sanity Check
-                if not math.isfinite(loss.item()):
-                    print(
-                        "Val loss is {}, stopping training".format(
-                            loss.item()), force=True)
-                    sys.exit(1)
+                self._stop_if_nonfinite(loss.item(), 'Val')
 
                 # === Logging === #
                 if self.args.dev == 'gpu':
