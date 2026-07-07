@@ -228,6 +228,10 @@ class Trainer:
         )
 
         # === training loop === #
+        # When resuming a run that already reached args.epochs the loop body
+        # never executes, but the validation pass below still needs `epoch`
+        # for its header and global step; give it the last-epoch value.
+        epoch = max(self.args.epochs - 1, 0)
         for epoch in range(self.start_epoch, self.args.epochs):
 
             self.train_gen.sampler.set_epoch(epoch)

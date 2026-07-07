@@ -333,15 +333,21 @@ def train(gpu, args):
                                                         train_dataset,
                                                         scaler).fit()
 
-        min_test_loss = np.min(np.array(test_losses))
-        min_epoch = np.argmin(np.array(test_losses))
-        min_train_loss = train_losses[min_epoch]
-        print((f'Minimum test loss {min_test_loss:.5e} @ epoch {min_epoch}, '
-               f'training loss = {min_train_loss:.5e}, '
-               f'validation loss = {valid_loss:.5e}'))
-        with open(os.path.join(args.out, 'losses.dat'), 'w') as f:
-            f.write((f'{args.alpha} {min_epoch} {min_test_loss} '
-                     f'{min_train_loss} {valid_loss}'))
+        if test_losses:
+            min_test_loss = np.min(np.array(test_losses))
+            min_epoch = np.argmin(np.array(test_losses))
+            min_train_loss = train_losses[min_epoch]
+            print((f'Minimum test loss {min_test_loss:.5e} @ epoch {min_epoch}, '
+                   f'training loss = {min_train_loss:.5e}, '
+                   f'validation loss = {valid_loss:.5e}'))
+            with open(os.path.join(args.out, 'losses.dat'), 'w') as f:
+                f.write((f'{args.alpha} {min_epoch} {min_test_loss} '
+                         f'{min_train_loss} {valid_loss}'))
+        else:
+            # resumed checkpoint was already at args.epochs: nothing trained
+            # this session, so there are no per-epoch losses to summarize
+            print(('No epochs trained this session, '
+                   f'validation loss = {valid_loss:.5e}'))
 
     plot_histograms(valid_loader, model, train_dataset, scaler, args)
     plot_results(args, model, train_losses, test_losses,
