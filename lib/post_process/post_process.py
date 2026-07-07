@@ -408,70 +408,49 @@ def turbify_image(model, fname, alpha):
         image = image.save(outpath)
 
 def spectrum(X, args):
-        """Returns the mean (across a minibatch) energy spectrum
+    """Returns the energy spectrum of a single sample
 
-        Parameters
-        ----------
-        x : 4D/5D tensor of floats
-           Input scalar field
+    Parameters
+    ----------
+    X : 3D/4D tensor of floats
+       Input field: leading channel dimension(s), spatial dimensions last
 
-        """
-        n = X.shape[-2]
-        batch_size = X.shape[0]
-        dims = (-2, -1) if args.dimensions == 2 else (-3, -2, -1)
-        # forward FFT
-        fX = torch.fft.rfftn(X, dim=dims, norm='ortho')
-        wvs = torch.fft.fftfreq(n) # wavenumbers
-        rwvs = torch.fft.rfftfreq(n) # real-to-half-complex wavenumbes
-        # define wavevector magnitudes
-        # 2d
-        wvs2d = torch.sqrt(wvs.view(1, -1, 1) ** 2 +
-                           rwvs.view(1, 1, -1) ** 2)
-        wvs2d = wvs2d.repeat(batch_size, 1, 1, 1)
-        # 3d
-        wvs3d = torch.sqrt(wvs.view(-1, 1, 1) ** 2 +
-                           wvs.view(1, -1, 1) ** 2 +
-                           rwvs.view(1, 1, -1) ** 2)
-        wvs3d = wvs3d.repeat(batch_size, n, 1, 1, 1)
-        wvms = wvs2d if args.dimensions == 2 else wvs3d
+    """
+    n = X.shape[-2]
+    dims = (-2, -1) if args.dimensions == 2 else (-3, -2, -1)
+    # forward real-to-half-complex FFT
+    fX = torch.fft.rfftn(X, dim=dims, norm='ortho')
 
-        wvmax = torch.max(wvms) # maximum wavevector magnitude
+    wvs = torch.fft.fftfreq(n) # wavenumbers
+    rwvs = torch.fft.rfftfreq(n) # real-to-half-complex wavenumbers
+    # wavevector magnitude at every retained mode
+    if args.dimensions == 2:
+        wvms = torch.sqrt(wvs.view(-1, 1) ** 2 +
+                          rwvs.view(1, -1) ** 2)
+    else:
+        wvms = torch.sqrt(wvs.view(-1, 1, 1) ** 2 +
+                          wvs.view(1, -1, 1) ** 2 +
+                          rwvs.view(1, 1, -1) ** 2)
+    wvms = wvms.to(fX.device)
 
-        # define x, y variables for the energy spectrum
-        wvs_spec = torch.linspace(0.0, wvmax, n)
-        wvs_spec = wvs_spec.repeat(batch_size, 1)
-                    
-        spec = torch.zeros_like(wvs_spec)
-        # calculate the spectrum
-        if args.dimensions == 2:
-            for k in range(len(rwvs)):
-                for j in range(len(wvs)):
-                    idx = torch.argmin(torch.abs(wvs_spec[:, :] -
-                                                 wvms[:, :, j, k]), dim=1)
-                    # accumulate energy at position idx
-                    spec[:, idx] += torch.abs(fX[:, :, j, k] ** 2)
-        else:
-            for k in range(len(rwvs)):
-                for j in range(len(wvs)):
-                    for i in range(len(wvs)):
-                        wvm = wvms[:, :, i, j, k]
-                        idx = (torch.argmin(torch.abs(wvs_spec[:, :]
-                                                      - wvm[:, :]), dim=1))
-                        # accumulate energy at position idx
-                        device = spec.device
-                        idx = idx.to(device)
-                        fX = fX.to(device)
-                        nrg = torch.abs(fX[:, i, j, k] ** 2)
-                        nrg = nrg.sum(dim=0)
-                        spec[:, idx] += nrg
+    # bin centers of the spectrum
+    wvs_spec = torch.linspace(0.0, torch.max(wvms), n).to(fX.device)
 
-        wvs_spec = wvs_spec[-1]
-        wvs_spec = np.array(wvs_spec.to('cpu'))
-        spec = torch.mean(spec, dim=0).squeeze(0) # take mean across minibatch
-        spec = np.array(spec.to('cpu'))
+    # energy at every mode, summed over the leading (channel) dims
+    nrg = (torch.abs(fX) ** 2).reshape(-1, *wvms.shape).sum(dim=0)
 
+    # nearest-center binning, as the previous argmin loops did: bucketize
+    # against the midpoints between centers, then accumulate every mode in
+    # one index_add_ (duplicate bins add up, unlike buffered `spec[idx] +=`)
+    midpoints = 0.5 * (wvs_spec[1:] + wvs_spec[:-1])
+    idx = torch.bucketize(wvms.reshape(-1), midpoints)
+    spec = torch.zeros_like(wvs_spec)
+    spec.index_add_(0, idx, nrg.reshape(-1))
 
-        return wvs_spec, spec
+    wvs_spec = np.array(wvs_spec.to('cpu'))
+    spec = np.array(spec.to('cpu'))
+
+    return wvs_spec, spec
 
 def plot_FNet(model, args):
     plt.figure(figsize=(15, 10))
