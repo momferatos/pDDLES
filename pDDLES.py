@@ -263,17 +263,12 @@ def train(gpu, args):
         # use if model contains batchnorm.
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model) 
 
-    device_ids = None
-    if args.slurm:
-        if args.dev == 'gpu':
-            device_ids = [0]
-        else:
-            device_ids = None
+    # DDP only accepts device_ids for single-GPU modules; CPU modules must
+    # pass None or DDP raises at construction.
+    if args.dev == 'gpu':
+        device_ids = [0] if args.slurm else [gpu]
     else:
-        if args.dev == 'gpu':
-            device_ids = [gpu]
-        else:
-            device_ids = [args.device]
+        device_ids = None
         
     model = model.to(args.device)
         
