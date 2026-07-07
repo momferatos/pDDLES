@@ -207,10 +207,14 @@ class Trainer:
             test_metric_logger.synchronize_between_processes()
             print("Averaged stats:", test_metric_logger)
 
+            # record the epoch means: after synchronize_between_processes
+            # global_avg is the average over every batch on every rank,
+            # whereas .value is just this rank's last batch - far too noisy
+            # for the loss curves and the best-epoch selection built on them
             self.test_losses.append(
-                test_metric_logger.meters['test_loss'].value)
+                test_metric_logger.meters['test_loss'].global_avg)
             self.train_losses.append(
-                metric_logger.meters['train_loss'].value)
+                metric_logger.meters['train_loss'].global_avg)
 
     def fit(self):
 
@@ -302,7 +306,8 @@ class Trainer:
             val_metric_logger.update(val_div=self._global_max(val_div))
             val_metric_logger.synchronize_between_processes()
             print("Averaged stats:", val_metric_logger)
-            self.val_loss = val_metric_logger.meters['val_loss'].value
+            # epoch mean across all ranks and batches, not the last batch
+            self.val_loss = val_metric_logger.meters['val_loss'].global_avg
             
         print('Done.')
         
