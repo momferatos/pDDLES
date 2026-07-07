@@ -45,11 +45,25 @@ class Trainer:
 #        self.scaler.fit()
         
         # === TB writers === #
-        if self.args.main:	
+        if self.args.main:
 
             self.writer = get_writer(args)
-            self.lr_sched_writer = TBWriter(self.writer, 'scalar', 'Schedules/Learning Rate')			
-            self.loss_writer = TBWriter(self.writer, 'scalar', 'Loss/total')
+            self.lr_sched_writer = TBWriter(
+                self.writer, 'scalar', 'Schedules/Learning Rate')
+            # one writer per series: funnelling every metric through a
+            # single tag interleaves six series into one unreadable chart
+            self.train_loss_writer = TBWriter(
+                self.writer, 'scalar', 'Loss/train')
+            self.test_loss_writer = TBWriter(
+                self.writer, 'scalar', 'Loss/test')
+            self.val_loss_writer = TBWriter(
+                self.writer, 'scalar', 'Loss/val')
+            self.train_div_writer = TBWriter(
+                self.writer, 'scalar', 'Divergence/train')
+            self.test_div_writer = TBWriter(
+                self.writer, 'scalar', 'Divergence/test')
+            self.val_div_writer = TBWriter(
+                self.writer, 'scalar', 'Divergence/val')
 
             checkdir("{}/weights/{}/".format(args.out, self.args.model), args.reset)
 
@@ -137,8 +151,10 @@ class Trainer:
             metric_logger.update(train_div=train_div.item())
 
             if self.args.main:
-                self.loss_writer(metric_logger.meters['train_loss'].value, it)
-                self.loss_writer(metric_logger.meters['train_div'].value, it)
+                self.train_loss_writer(
+                    metric_logger.meters['train_loss'].value, it)
+                self.train_div_writer(
+                    metric_logger.meters['train_div'].value, it)
                 self.lr_sched_writer(self.optimizer.param_groups[0]["lr"], it)
 
 
@@ -154,10 +170,12 @@ class Trainer:
                                                  header)):
 
                 # === Global Iteration === #
-                it = len(self.train_gen) * epoch + it
+                # scale by this loader's own length: train_gen's length put
+                # successive epochs' test points on overlapping steps
+                it = len(self.test_gen) * epoch + it
 
                 # === Inputs === #
-                
+
                 if args.dev == 'gpu':
                     input_data = input_data.cuda(non_blocking=True)
                     autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
@@ -197,9 +215,9 @@ class Trainer:
                 test_metric_logger.update(test_div=div.item())
 
                 if self.args.main:
-                    self.loss_writer(
+                    self.test_loss_writer(
                         test_metric_logger.meters['test_loss'].value, it)
-                    self.loss_writer(
+                    self.test_div_writer(
                         test_metric_logger.meters['test_div'].value, it)
 
             # reduce the per-rank running max to the global max across ranks
@@ -255,10 +273,10 @@ class Trainer:
                         self.val_gen, 10, self.args, header)):
 
                 # === Global Iteration === #
-                it = len(self.train_gen) * epoch + it
+                it = len(self.val_gen) * epoch + it
 
                 # === Inputs === #
-                
+
                 if self.args.dev == 'gpu':
                     input_data = input_data.cuda(non_blocking=True)
                     autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
@@ -297,9 +315,9 @@ class Trainer:
                 val_metric_logger.update(val_div=div.item())
 
                 if self.args.main:
-                    self.loss_writer(
+                    self.val_loss_writer(
                         val_metric_logger.meters['val_loss'].value, it)
-                    self.loss_writer(
+                    self.val_div_writer(
                         val_metric_logger.meters['val_div'].value, it)
 
             # reduce the per-rank running max to the global max across ranks
