@@ -14,7 +14,6 @@ import pathlib
 import os
 import sys
 import shutil
-import math
 
 class TurbDataset(Dataset):
     """Dataset representing a shapshot from the time evolution of the passive
@@ -118,22 +117,10 @@ class TurbDataset(Dataset):
         return
     
     def __len__(self):
-
-        if self.args.drop_last and \
-            len(self.filenames) % self.args.world_size != 0:
-            # type: ignore[arg-type]
-            # Split to nearest available length that is evenly divisible.
-            # This is to ensure each rank receives the same amount of data when
-            # using this Sampler.
-            length = (math.ceil((len(self.filenames) -
-                                 self.args.world_size) /
-                                self.args.world_size)) # type: ignore[arg-type]
-            
-        else:
-            length = (math.ceil(len(self.filenames) /
-                                self.args.world_size)) # type: ignore[arg-type]
-
-        return length
+        # The true file count. Per-rank shard sizing is TurbSampler's job;
+        # dividing by world_size here shrank every sampler-less DataLoader
+        # (validation, scaler fit) to the first 1/world_size of its files.
+        return len(self.filenames)
 
     def __getitem__(self, idx):
 

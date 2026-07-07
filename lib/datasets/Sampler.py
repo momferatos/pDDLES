@@ -30,29 +30,19 @@ class TurbSampler(DistributedSampler):
         self.rank = rank
         self.epoch = 0
         self.drop_last = drop_last
-        self.num_samples = len(self.dataset)
 
-        
-        # #If the dataset length is evenly divisible by # of
-        # # replicas, then there
-        # # is no need to drop any data, since the dataset
-        # # will be split equally.
-        # if self.drop_last and len(self.dataset) % self.num_replicas != 0:
-        #     # type: ignore[arg-type]
-        #     # Split to nearest available length that is evenly divisible.
-        #     # This is to ensure each rank receives
-        #     # the same amount of data when
-        #     # using this Sampler.
-        #     self.num_samples = math.ceil(
-        #         (len(self.dataset) - self.num_replicas) / self.num_replicas
-        #         # type: ignore[arg-type]
-        #     )
-        # else:
-        #     self.num_samples = math.ceil(
-        #         len(self.dataset) / self.num_replicas)
-        #     # type: ignore[arg-type]
+        # Per-rank sample count (stock DistributedSampler formula). The
+        # dataset's __len__ is the true file count; it must not be
+        # pre-divided by world_size or sampler-less DataLoaders shrink too.
+        if self.drop_last and len(self.dataset) % self.num_replicas != 0:
+            # Split to nearest available length that is evenly divisible,
+            # so each rank receives the same amount of data.
+            self.num_samples = math.ceil(
+                (len(self.dataset) - self.num_replicas) / self.num_replicas)
+        else:
+            self.num_samples = math.ceil(
+                len(self.dataset) / self.num_replicas)
 
-        
         self.total_size = self.num_samples * self.num_replicas
         self.length = len(self.dataset.filenames)
         self.shuffle = shuffle
