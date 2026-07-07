@@ -107,21 +107,12 @@ def train(gpu, args):
     print(f'Full command line: {args.cmdline}')
     print()
     
-    if args.dev == 'gpu':
-        if args.slurm:
-            args.device = 'cuda:0'
-        else:
-            # use the local process index, not args.rank: rank is still 0 here
-            # (it gets its per-process value later in init_dist_gpu), so using
-            # it would put every process on cuda:0.
-            args.device = torch.device('cuda', gpu)
-    else:
-        args.device = torch.device('cpu', args.rank)
-            
-#    torch.set_default_device(args.device)
-    
     # === SET ENV === #
-    
+
+    # args.device is assigned inside init_dist_gpu, once the rank's local
+    # index is known: submitit's JobEnvironment for slurm, the spawn index
+    # for local runs. A fixed device here would stack all of a node's ranks
+    # on cuda:0.
     init_dist_gpu(gpu, args)
           
     ngpus = torch.cuda.device_count()
@@ -130,7 +121,7 @@ def train(gpu, args):
         print(f'{i} -  {torch.cuda.get_device_properties(i).name}')
     print()
 
-    print(f'Process {gpu} is using device {args.device}')
+    print(f'Local rank {args.gpu} is using device {args.device}')
     
     # === DATA === #
     get_dataset = getattr(__import__("lib.datasets.{}".format(args.dataset),
@@ -264,9 +255,10 @@ def train(gpu, args):
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model) 
 
     # DDP only accepts device_ids for single-GPU modules; CPU modules must
-    # pass None or DDP raises at construction.
+    # pass None or DDP raises at construction. args.gpu is this rank's
+    # node-local device index in both slurm and local modes.
     if args.dev == 'gpu':
-        device_ids = [0] if args.slurm else [gpu]
+        device_ids = [args.gpu]
     else:
         device_ids = None
         

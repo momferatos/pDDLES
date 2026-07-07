@@ -126,13 +126,19 @@ def init_dist_gpu(gpu, args):
     
     if args.dev == 'gpu':
         backend = 'nccl'
-        # Bind this rank's process group to the device its tensors live on
-        # (set in train() before this call). Without device_id, collectives
-        # like barrier() warn and guess the device from the current context.
-        device_id = torch.device(args.device)
+        # Bind each rank to its node-local GPU. Under slurm every task sees
+        # all of the node's GPUs (gres=gpu:N without gpu-bind), so a fixed
+        # cuda:0 would stack all local ranks on one device; args.gpu is the
+        # local rank in both modes (JobEnvironment.local_rank / spawn index,
+        # remapped via CUDA_VISIBLE_DEVICES for local runs). Passing
+        # device_id to init_process_group also stops collectives like
+        # barrier() from guessing the device.
+        args.device = torch.device('cuda', args.gpu)
+        device_id = args.device
         torch.cuda.set_device(device_id)
     else:
         backend = 'gloo'
+        args.device = torch.device('cpu')
         device_id = None
 
     dist.init_process_group(
