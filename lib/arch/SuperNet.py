@@ -7,7 +7,7 @@
 
 import torch.nn as nn
 import torch.nn.functional as F
-from Datasets import TurbDataset
+from lib.datasets.TurbDataset import TurbDataset
 
 class DownNet(nn.Module):
     """Downscaling convolutional layer
@@ -35,14 +35,14 @@ class DownNet(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.args = args
-        self.conv = self.args.conv(self.args.num_channels,
-                                        self.args.num_channels,
+        self.conv = self.args.conv(self.args.num_featmaps,
+                                        self.args.num_featmaps,
                                          kernel_size=self.args.kernel_size,
                                          padding='same',
                                          padding_mode='circular',
                                          bias=True)
         self.batchnorm = self.args.batchnorm(
-            num_features=self.args.num_channels)
+            num_features=self.args.num_featmaps)
         if self.args.dropout:
             self.dropout = nn.Dropout(self.args.dropout)
         self.actfun = self.args.actfun
@@ -90,8 +90,8 @@ class UpNet(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.args = args
-        self.conv = self.args.conv(self.args.num_channels,
-                                        self.args.num_channels,
+        self.conv = self.args.conv(self.args.num_featmaps,
+                                        self.args.num_featmaps,
                                         kernel_size=self.args.kernel_size,
                                         padding='same',
                                         padding_mode='circular',
@@ -99,7 +99,7 @@ class UpNet(nn.Module):
         if self.args.dropout:
             self.dropout = nn.Dropout(self.args.dropout)
         self.batchnorm = self.args.batchnorm(
-            num_features=self.args.num_channels)
+            num_features=self.args.num_featmaps)
         self.actfun = self.args.actfun
         
         return
@@ -135,14 +135,15 @@ class SuperNet(nn.Module):
         super(SuperNet, self).__init__()
 
         self.args = args
+        self.input_featmaps = 1 if self.args.scalar else 3
         self.conv_first = self.args.conv(
-            1, self.args.num_channels,
+            self.input_featmaps, self.args.num_featmaps,
             kernel_size=self.args.kernel_size,
             padding='same',
             padding_mode='circular',
             bias=True)
         self.conv_last = self.args.conv(
-            self.args.num_channels, 1,
+            self.args.num_featmaps, self.input_featmaps,
             kernel_size=self.args.kernel_size,
             padding='same',
             padding_mode='circular',
@@ -150,16 +151,15 @@ class SuperNet(nn.Module):
         if self.args.dropout:
             self.dropout = nn.Dropout(self.args.dropout)
         self.batchnorm_first = self.args.batchnorm(
-            num_features=self.args.num_channels)
-        self.batchnorm_first = self.args.batchnorm(
-            num_features=self.args.num_channels)
+            num_features=self.args.num_featmaps)
         self.batchnorm_last = self.args.batchnorm(
-            num_features=1)
+            num_features=self.input_featmaps)
         self.actfun = self.args.actfun
-        
+
         self.n = self.args.n
+        # -num_levels defaults to None; treat both None and 0 as one level
         self.num_levels = (self.args.num_levels
-                           if self.args.num_levels != 0 else 1)
+                           if self.args.num_levels else 1)
         self.factor = 2
         ups = []
         downs = []
@@ -177,7 +177,6 @@ class SuperNet(nn.Module):
         nets = ups + downs
 
         self.supernet = nn.Sequential(*nets)
-        self.actfun = self.args.actfun
         self.dataset = TurbDataset([], self.args)
         
         return
@@ -200,5 +199,11 @@ class SuperNet(nn.Module):
         out = self.actfun(out)
         
         out = self.dataset.truncate(out)
-        
+
         return out
+
+def get_model(args):
+
+    model = SuperNet(args)
+
+    return model
