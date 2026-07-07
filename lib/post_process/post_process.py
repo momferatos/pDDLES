@@ -13,7 +13,6 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from PIL import Image
 import torch
 from torch.utils.data import DataLoader, random_split
-import torch.distributed as dist
 
 from lib.datasets.TurbDataset import TurbDataset
 
@@ -221,9 +220,10 @@ def plot_results(args, model, train_losses, test_losses,
                                  ['xmf']))
         write_xdmf_file(h5_filename,
                         xmf_filename, args)
-        
-    dist.barrier()
-    
+
+    # no barrier here: only rank 0 plots, and end-of-run synchronization is
+    # cleanup_distributed()'s barrier in the caller
+
     return
 
 

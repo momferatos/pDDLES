@@ -345,12 +345,18 @@ def train(gpu, args):
             print(('No epochs trained this session, '
                    f'validation loss = {valid_loss:.5e}'))
 
-    plot_histograms(valid_loader, model, train_dataset, scaler, args)
-    plot_results(args, model, train_losses, test_losses,
-                 train_dataset, valid_loader, scaler)
-    
-    if args.arch == 'FNet':
-        plot_FNet(model, args)
+    if args.main:
+        # rank 0 only: every rank used to redo the same plots and race on
+        # the same output files. Plot with the bare module - a DDP forward
+        # here would broadcast buffers, a collective the other ranks (already
+        # waiting in cleanup_distributed's barrier) never join.
+        plot_model = model.module
+        plot_histograms(valid_loader, plot_model, train_dataset, scaler, args)
+        plot_results(args, plot_model, train_losses, test_losses,
+                     train_dataset, valid_loader, scaler)
+
+        if args.arch == 'FNet':
+            plot_FNet(plot_model, args)
 
     cleanup_distributed()
 
