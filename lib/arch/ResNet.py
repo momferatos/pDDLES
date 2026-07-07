@@ -8,7 +8,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from lib.datasets.TurbDataset import TurbDataset
+from lib.datasets.TurbDataset import get_helper
 
 class ResNetBlock(nn.Module):
     """A convolutional block of a residual neural network (ResNet)
@@ -72,7 +72,7 @@ class ResNet(nn.Module):
 
         self.args = args
         self.dims = (-3, -2 ,-1)
-        self.dataset = TurbDataset([], args)
+        self.dataset = get_helper(args)
                                    
         if self.args.scalar:
             self.input_featmaps = 1
@@ -107,7 +107,6 @@ class ResNet(nn.Module):
                                        bias=True)
         self.batchnormlast = self.args.batchnorm(
             num_features=self.input_featmaps)
-        self.dataset = TurbDataset([], self.args)
             
         self.init_weights(self.convfirst)
         self.init_weights(self.resnet)

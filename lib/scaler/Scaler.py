@@ -7,7 +7,7 @@ import os
 import hashlib
 import numpy as np
 import torch
-from lib.datasets.TurbDataset import TurbDataset
+from lib.datasets.TurbDataset import get_helper
 
 
 def _cache_key(args, filenames):
@@ -49,7 +49,7 @@ class NormScaler(object):
     def __init__(self, dataloader, args):
 
         self.dataloader = dataloader
-        self.dataset = TurbDataset([], args)
+        self.dataset = get_helper(args)
                                    
         self.X_mean = 0.0
         self.X_std = 1.0
@@ -205,7 +205,7 @@ class MinmaxScaler(object):
     def __init__(self, dataloader, args):
 
         self.dataloader = dataloader
-        self.dataset = TurbDataset([], args)
+        self.dataset = get_helper(args)
         self.args = args
         
         self.X_max = 1.0

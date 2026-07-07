@@ -7,7 +7,7 @@
 
 import torch.nn as nn
 import torch.nn.functional as F
-from lib.datasets.TurbDataset import TurbDataset
+from lib.datasets.TurbDataset import get_helper
 
 class DownNet(nn.Module):
     """Downscaling convolutional layer
@@ -177,7 +177,7 @@ class SuperNet(nn.Module):
         nets = ups + downs
 
         self.supernet = nn.Sequential(*nets)
-        self.dataset = TurbDataset([], self.args)
+        self.dataset = get_helper(self.args)
         
         return
 

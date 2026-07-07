@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from lib.datasets.TurbDataset import TurbDataset
+from lib.datasets.TurbDataset import get_helper
 
 class Loss(nn.Module):
     def __init__(self, args):
@@ -37,7 +37,7 @@ class SubgridLoss(nn.Module):
         self.args = args
         self.__name__ = 'SubgridLoss'
         self.loss_fn = nn.MSELoss(reduction='mean')
-        self.dataset = TurbDataset([], self.args)
+        self.dataset = get_helper(self.args)
         self.device = args.device
         
         return

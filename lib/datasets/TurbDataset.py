@@ -481,6 +481,24 @@ class TurbDataset(Dataset):
             self.datadict[idx] = y
         return
     
+_helper_cache = {}
+
+def get_helper(args):
+    """Shared file-less TurbDataset for the spectral utilities.
+
+    Models, blocks, losses and scalers only need the transform methods
+    (LES_filter, to/from_helical, divergence, ...), whose precomputed
+    helical basis (hplus/hminus/k/kappa, ~n^3-sized tensors on
+    args.device) depends only on the key below. A private instance per
+    FourierBlock/WaveletBlock duplicated that basis once per block.
+    """
+    key = (int(args.n), str(args.device), int(args.dimensions),
+           float(args.alpha))
+    if key not in _helper_cache:
+        _helper_cache[key] = TurbDataset([], args)
+    return _helper_cache[key]
+
+
 def get_dataset(filenames, args):
 
     # === Get Dataset === #

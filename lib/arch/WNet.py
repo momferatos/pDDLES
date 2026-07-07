@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pywt
 import ptwt
-from lib.datasets.TurbDataset import TurbDataset
+from lib.datasets.TurbDataset import get_helper
 
 class WNet(nn.Module):
     """Wavelet neural network
@@ -37,11 +37,10 @@ class WNet(nn.Module):
             modulelist.append(WaveletBlock(self.args))
         self.waveletnet = nn.Sequential(*modulelist)
 
-#        self.dataset = TurbDataset([], args)
         
         # set number of learnable parameters
         self.device = args.device
-        self.dataset = TurbDataset([], args)
+        self.dataset = get_helper(args)
         self.dims = (-3, -2, -1)
 
         self.linear = nn.Linear(1, 1, bias=False) # fully-connected layer
@@ -79,7 +78,7 @@ class WaveletBlock(nn.Module):
         super(WaveletBlock, self).__init__()
         self.args = args
         self.device =self.args.device
-        self.dataset = TurbDataset([], args)
+        self.dataset = get_helper(args)
         self.dims = (-3, -2, -1)
         
         if args.scalar:

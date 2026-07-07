@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from lib.datasets.TurbDataset import TurbDataset
+from lib.datasets.TurbDataset import get_helper
 
 class FNet(nn.Module):
     """Fourier neural network
@@ -27,7 +27,7 @@ class FNet(nn.Module):
 
         super(FNet, self).__init__()
         self.args = args
-        self.dataset = TurbDataset([], self.args)
+        self.dataset = get_helper(self.args)
         
         # build pipeline of num_blocks FourierBlocks
         modulelist = nn.ModuleList([])
@@ -72,7 +72,7 @@ class FourierBlock(nn.Module):
         self.dims = (-3, -2, -1)
         self.args = args
         self.actfun = self.args.actfun # select activation function
-        self.dataset = TurbDataset([], self.args)
+        self.dataset = get_helper(self.args)
         
         # Create learnable spectral multiplication coefficients
         self.alpha = torch.rand(args.num_coeffs,
