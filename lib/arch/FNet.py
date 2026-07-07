@@ -116,8 +116,13 @@ class FourierBlock(nn.Module):
 
     
     def forward(self, x):
-        
-        
+
+        if self.idxs.device != x.device:
+            # constant index map: move it alongside the input once, rather
+            # than registering a buffer (DDP would rebroadcast it every
+            # forward) or paying an implicit cross-device copy per indexing
+            self.idxs = self.idxs.to(x.device)
+
         out = self.alpha[self.idxs] * x
         out = self.dataset.from_helical(out, indomain='fourier')
         out = self.batchnorm(out)

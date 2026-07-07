@@ -48,25 +48,21 @@ class TurbDataset(Dataset):
             if self.filenames:
                 self.copy()            
 
-        if filenames:
-            filename = self.filenames[0]
-            # load data from HDF5 file
-            with h5py.File(filename, 'r') as h5file:
-                # 2d or 3d data, using float32 for
-                # better performance on the GPU
-                X = np.array(h5file[self.args.hdf5_key], dtype='float32')
+        return
 
-            if self.args.hdf5_key == 'u':
-                X = X.transpose([3, 2, 1, 0])
+    def _helical_basis(self):
+        """Helical unit vectors h+/h- on self.device (built on first use).
 
-            X = torch.from_numpy(X)
-            X = X.unsqueeze(0)
-                
+        Lazy so that data-loading instances carry no device tensors:
+        DataLoader workers receive a pickled copy of this dataset and only
+        need CPU-side loading/truncation (see __getstate__).
+        """
+        cache = getattr(self, '_helical_cache', None)
+        if cache is not None:
+            return cache
+
         k, kappa = self.wave_vectors(self.args.n)
 
-        k = k.to(self.device)
-        kappa = kappa.to(self.device)
-        
         ex = torch.Tensor(
             [1.0, 0.0, 0.0]).unsqueeze(
                 -1).unsqueeze(-1).unsqueeze(-1)
@@ -80,7 +76,7 @@ class TurbDataset(Dataset):
         ey = ey.expand(-1, kappa.shape[1],
                            kappa.shape[2], kappa.shape[3])
         ey = ey.to(self.device)
-        
+
         ez = torch.Tensor(
             [0.0, 0.0, 1.0]).unsqueeze(
                 -1).unsqueeze(-1).unsqueeze(-1)
@@ -91,31 +87,37 @@ class TurbDataset(Dataset):
         ezxk = torch.cross(ez, k, dim=0)
         kxezxk = torch.cross(k, ezxk, dim=0)
         mag = torch.linalg.vecdot(ezxk, ezxk, dim=0)
-        #mag = torch.where(torch.abs(mag) < self.eps, 1.0, mag)
         mag_ezxk = torch.sqrt(mag)
         mag = torch.linalg.vecdot(kxezxk, kxezxk, dim=0)
-        #mag = torch.where(torch.abs(mag) < self.eps, 1.0, mag)
         mag_kxezxk = torch.sqrt(mag)
         mask = (mag_ezxk != 0.0)
         sqrt2 = np.sqrt(2.0)
-        
-        self.hplus = (torch.where(mask, ezxk /
-                                  (sqrt2 * mag_ezxk) + 1j *
-                                  kxezxk / (sqrt2 * mag_kxezxk),
-                                  (ex + 1j * ey) / sqrt2))
-        
-        self.hminus = (torch.where(mask, ezxk /
-                                   (sqrt2 * mag_ezxk) - 1j *
-                                   kxezxk / (sqrt2 * mag_kxezxk),
-                                   (ex - 1j * ey) / sqrt2))
 
-        self.hplus = self.hplus.to(self.device)
-        self.hminus = self.hminus.to(self.device)
+        hplus = (torch.where(mask, ezxk /
+                             (sqrt2 * mag_ezxk) + 1j *
+                             kxezxk / (sqrt2 * mag_kxezxk),
+                             (ex + 1j * ey) / sqrt2))
 
-#        self.helical_checks(X)
-        
-        return
-    
+        hminus = (torch.where(mask, ezxk /
+                              (sqrt2 * mag_ezxk) - 1j *
+                              kxezxk / (sqrt2 * mag_kxezxk),
+                              (ex - 1j * ey) / sqrt2))
+
+        self._helical_cache = (hplus.to(self.device),
+                               hminus.to(self.device))
+        return self._helical_cache
+
+    def __getstate__(self):
+        # DataLoader workers pickle the dataset: strip the lazily built
+        # spectral caches so no device tensors cross process boundaries;
+        # they rebuild on first use wherever they are next needed.
+        state = self.__dict__.copy()
+        for key in ('_helical_cache', '_wave_vectors_cache', '_wvms_cache',
+                    '_trunc_mask_cache', '_les_mask_cache'):
+            state.pop(key, None)
+        return state
+
+
     def __len__(self):
         # The true file count. Per-rank shard sizing is TurbSampler's job;
         # dividing by world_size here shrank every sampler-less DataLoader
@@ -257,28 +259,29 @@ class TurbDataset(Dataset):
     def helical_checks(self, X):
 
         k, kappa = self.wave_vectors(self.args.n)
-        
+        hplus, hminus = self._helical_basis()
+
         d00 = torch.linalg.vecdot(
-                           self.hplus,
-                           torch.conj_physical(self.hplus), dim=0)
-        
+                           hplus,
+                           torch.conj_physical(hplus), dim=0)
+
         d00 = d00.abs().max()
-        
+
         d01 = torch.linalg.vecdot(
-                           self.hplus,
-                           torch.conj_physical(self.hminus), dim=0)
+                           hplus,
+                           torch.conj_physical(hminus), dim=0)
         d01 = d01
         d01 = d01.abs().max()
-        
+
         d10 = torch.linalg.vecdot(
-                           self.hminus,
-                           torch.conj_physical(self.hplus), dim=0)
+                           hminus,
+                           torch.conj_physical(hplus), dim=0)
         d10 = d10
         d10 = d10.abs().max()
-        
+
         d11 = torch.linalg.vecdot(
-                           self.hminus,
-                           torch.conj_physical(self.hminus), dim=0)
+                           hminus,
+                           torch.conj_physical(hminus), dim=0)
         mask = (d11 != 0.0)
         d11 = d11.abs().max()
         
@@ -296,11 +299,12 @@ class TurbDataset(Dataset):
         return
     
     def to_helical(self, u, outdomain='physical'):
-    
-        fu = torch.fft.rfftn(u, dim=self.dims, norm='ortho') 
-        
-        hplus = self.hplus.unsqueeze(0).expand(u.shape[0], -1, -1, -1, -1)
-        hminus = self.hminus.unsqueeze(0).expand(
+
+        fu = torch.fft.rfftn(u, dim=self.dims, norm='ortho')
+
+        hplus, hminus = self._helical_basis()
+        hplus = hplus.unsqueeze(0).expand(u.shape[0], -1, -1, -1, -1)
+        hminus = hminus.unsqueeze(0).expand(
             u.shape[0], -1, -1, -1, -1)
         
         fuplus = torch.einsum('bi...,bi...->b...',
@@ -329,9 +333,10 @@ class TurbDataset(Dataset):
             fuplus = fupm[:, 0, :, :, :].unsqueeze(1)
             fuminus = fupm[:, 1, :, :, :].unsqueeze(1)
                 
-        hplus = self.hplus.unsqueeze(0).expand(fupm.shape[0], -1, -1, -1, -1)
-        
-        hminus = self.hminus.unsqueeze(0).expand(
+        hplus, hminus = self._helical_basis()
+        hplus = hplus.unsqueeze(0).expand(fupm.shape[0], -1, -1, -1, -1)
+
+        hminus = hminus.unsqueeze(0).expand(
             fupm.shape[0], -1, -1, -1, -1)
         
                 
