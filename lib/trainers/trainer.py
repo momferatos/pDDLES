@@ -139,9 +139,10 @@ class Trainer:
                 
                 loss = self.loss(preds, labels)
 
-                # detach: div is logged only, never backpropped, so it must
-                # not pin preds' autograd graph across iterations.
-                div = self.dataset.divergence(preds).detach()
+                # .item(): div is logged only, never backpropped; a plain
+                # float cannot pin preds' autograd graph across iterations
+                # and keeps the running max type-stable.
+                div = self.dataset.divergence(preds).item()
                 train_div = max(div, train_div)
 
             # Sanity Check
@@ -164,7 +165,7 @@ class Trainer:
                 torch.cuda.synchronize()
                 
             metric_logger.update(train_loss=loss.item())
-            metric_logger.update(train_div=train_div.item())
+            metric_logger.update(train_div=train_div)
 
             if self.args.main:
                 self.train_loss_writer(
@@ -216,7 +217,7 @@ class Trainer:
                     labels = y
                     
                     loss = self.loss(preds, labels)
-                    test_div = max(div, test_div)
+                    test_div = max(div.item(), test_div)
                 # Sanity Check
                 self._stop_if_nonfinite(loss.item(), 'Test')
 
@@ -312,7 +313,7 @@ class Trainer:
                     labels = y
                     
                     loss = self.loss(preds, labels)
-                    val_div = max(div, val_div)
+                    val_div = max(div.item(), val_div)
                 # Sanity Check
                 self._stop_if_nonfinite(loss.item(), 'Val')
 

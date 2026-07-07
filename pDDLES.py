@@ -57,7 +57,6 @@ def main():
         args.partition = 'cpu'
         slurm_additional_parameters = {'time': f'{args.timeout}'}
     
-    args.port = 7778
     
 
     args.dimensions = 3

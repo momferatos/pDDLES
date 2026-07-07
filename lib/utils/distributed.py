@@ -1,5 +1,5 @@
 import torch
-import os, random
+import os, random, socket
 import numpy as np
 import torch.distributed as dist
 import torch.backends.cudnn as cudnn
@@ -61,12 +61,6 @@ def init_dist_node(args):
         signal.signal(signal.SIGUSR1, handle_sigusr1)
         signal.signal(signal.SIGTERM, handle_sigterm)
 
-        # find a common host name on all nodes
-        cmd = 'scontrol show hostnames ' + os.getenv('SLURM_JOB_NODELIST')
-        stdout = subprocess.check_output(cmd.split())
-        host_name = stdout.decode().splitlines()[0]
-        args.dist_url = f'tcp://{host_name}:{args.port}'
-
         # distributed parameters
         args.rank = int(os.getenv('SLURM_NODEID')) * args.ngpus_per_node
         args.world_size = int(os.getenv('SLURM_NNODES')) * args.ngpus_per_node
@@ -84,8 +78,15 @@ def init_dist_node(args):
             args.ngpus_per_node = args.tasks_per_node
 
         args.rank = 0
-        args.dist_url = f'tcp://localhost:{args.port}'
         args.world_size = args.ngpus_per_node
+
+        if not args.port:
+            # pick a free port so two local runs on one machine don't
+            # collide on a fixed rendezvous port; chosen once here, before
+            # mp.spawn, so every child inherits the same value
+            with socket.socket() as s:
+                s.bind(('localhost', 0))
+                args.port = s.getsockname()[1]
 
         # Set All the Necessary Environment Variables!
         os.environ["MASTER_ADDR"] = 'localhost'
@@ -110,7 +111,14 @@ def init_dist_gpu(gpu, args):
         host_name = stdout.decode().splitlines()[0]
 
         # 7. MASTER_PORT
-        port = 7777
+        if args.port:
+            port = args.port
+        else:
+            # deterministic per-job port: every rank of a job derives the
+            # same value, and two jobs sharing a node get different ports
+            jobid = int(''.join(c for c in str(job_env.job_id)
+                                if c.isdigit()) or '0')
+            port = 40000 + jobid % 20000
 
         print(f'Process {args.rank}/{args.world_size} @ {host_name}:{port}')
     

@@ -97,6 +97,13 @@ def parse_args():
                         'one process per GPU (default "0" = one GPU). '
                         'e.g. "0,1,2,3"')
 
+    parser.add_argument('-port',
+                        type=int,
+                        default=0,
+                        help='TCP port for the distributed rendezvous; '
+                        '0 (default) picks automatically: a free port for '
+                        'local runs, a job-id-derived one under slurm')
+
     parser.add_argument('-cfg',
                         type =str,
                         help='Configuration file')
