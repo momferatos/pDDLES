@@ -4,9 +4,33 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 import os
+import hashlib
 import numpy as np
 import torch
 from lib.datasets.TurbDataset import TurbDataset
+
+
+def _cache_key(args, filenames):
+    """Fingerprint of everything the cached scaler constants depend on.
+
+    The constants are statistics of the LES-filtered training files, so the
+    cache must be invalidated when the file list, the filter cutoff, the
+    resolution, or the field changes - not just the split seed. Basenames
+    (not full paths) so moving the data directory keeps a valid cache.
+    """
+    names = '\n'.join(os.path.basename(fn) for fn in filenames)
+    return {'seed': int(args.seed),
+            'alpha': float(args.alpha),
+            'n': int(args.n),
+            'hdf5_key': str(args.hdf5_key),
+            'files': hashlib.sha256(names.encode()).hexdigest()}
+
+
+def _atomic_save(obj, fname):
+    """Write-then-rename so a concurrent reader never sees a partial file."""
+    tmp = f'{fname}.tmp.{os.getpid()}'
+    torch.save(obj, tmp)
+    os.replace(tmp, fname)
 
 class NormScaler(object):
     """Datalolader scaler
@@ -138,21 +162,23 @@ class NormScaler(object):
     
     def store(self, args):
         fname = os.path.join(args.h5path, 'norm.pt')
-        tens = {'seed': torch.Tensor([args.seed]), 'vals': torch.stack([self.X_mean, self.X_std, self.y_mean, self.y_std])}
-        torch.save(tens, fname)
+        tens = {'key': _cache_key(args, self.dataloader.dataset.filenames),
+                'vals': torch.stack([self.X_mean, self.X_std,
+                                     self.y_mean, self.y_std])}
+        _atomic_save(tens, fname)
 
         return
-    
+
     def load(self, args):
         fname = os.path.join(args.h5path, 'norm.pt')
-        if os.path.isfile(fname):
-            tens = torch.load(fname)
-            seed = int(tens['seed'].item())
-            if seed != args.seed:
-                return
-            else:
-                tens = torch.load(fname)
-        else:
+        if not os.path.isfile(fname):
+            return
+        tens = torch.load(fname)
+        # a mismatch also rejects pre-fingerprint cache files ('key' absent)
+        if tens.get('key') != _cache_key(args,
+                                         self.dataloader.dataset.filenames):
+            print('Scaler cache is stale (data/filter settings changed); '
+                  'refitting.')
             return
 
         self.X_mean = tens['vals'][0].to(torch.float32).to(self.device)
@@ -279,10 +305,10 @@ class MinmaxScaler(object):
 
     def store(self, args):
         fname = os.path.join(args.h5path, 'minmax.pt')
-        tens = {'seed': torch.Tensor([args.seed]),
+        tens = {'key': _cache_key(args, self.dataloader.dataset.filenames),
                 'vals': torch.tensor([float(self.X_min), float(self.X_max),
                                       float(self.y_min), float(self.y_max)])}
-        torch.save(tens, fname)
+        _atomic_save(tens, fname)
 
         return
 
@@ -291,8 +317,11 @@ class MinmaxScaler(object):
         if not os.path.isfile(fname):
             return
         tens = torch.load(fname)
-        seed = int(tens['seed'].item())
-        if seed != args.seed:
+        # a mismatch also rejects pre-fingerprint cache files ('key' absent)
+        if tens.get('key') != _cache_key(args,
+                                         self.dataloader.dataset.filenames):
+            print('Scaler cache is stale (data/filter settings changed); '
+                  'refitting.')
             return
 
         self.X_min = tens['vals'][0].to(self.device)

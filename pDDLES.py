@@ -288,7 +288,11 @@ def train(gpu, args):
         scaler.fit()
     else:
         print('Scaler values loaded from file.')
-    scaler.store(args)
+    if args.main:
+        # every rank fits identical constants over the same full loader, so
+        # a single writer suffices - and they would otherwise all race on
+        # the same file in the shared data directory
+        scaler.store(args)
     
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer),
