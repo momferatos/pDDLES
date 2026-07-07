@@ -107,20 +107,23 @@ class ResNet(nn.Module):
                                        bias=True)
         self.batchnormlast = self.args.batchnorm(
             num_features=self.input_featmaps)
-            
-        self.init_weights(self.convfirst)
-        self.init_weights(self.resnet)
-        self.init_weights(self.convlast)
 
-    
+        # apply() recurses into every submodule (incl. the convs inside each
+        # ResNetBlock); calling init_weights on the modules directly only
+        # ever saw the containers, never the conv layers.
+        self.apply(self.init_weights)
+
+
     def init_weights(self, m):
-        """Initializes the weights of the ResNet
+        """Kaiming-initializes the convolution weights of the ResNet.
 
         """
-        if isinstance(m, nn.Conv2d):
+        # data is 3D (Conv3d); the old Conv2d-only check matched nothing.
+        if isinstance(m, (nn.Conv2d, nn.Conv3d)):
             nn.init.kaiming_normal_(m.weight)
-            m.bias.data.fill_(0.01)
-            
+            if m.bias is not None:
+                m.bias.data.fill_(0.01)
+
         return
     
     def forward(self, x):
