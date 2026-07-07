@@ -16,7 +16,7 @@ import torch
 import torch.distributed as dist
 from lib.utils.file import checkdir
 from lib.utils.tensorboard import get_writer, TBWriter
-from lib.core.scheduler import cosine_scheduler, constant_scheduler
+from lib.core.scheduler import get_scheduler
 from lib.utils.distributed import MetricLogger, \
     is_dist_avail_and_initialized, cleanup_distributed
 from glob import glob
@@ -253,14 +253,7 @@ class Trainer:
         self.load_if_available()
 
         # === Schedules === #
-        lr_schedule = constant_scheduler(
-                        base_value = self.args.lr_start,
-            # * (self.args.batch_per_task * self.args.world_size) / 256.,
-                        final_value = self.args.lr_end,
-                        epochs = self.args.epochs,
-                        niter_per_ep = len(self.train_gen),
-                        warmup_epochs= self.args.lr_warmup,
-        )
+        lr_schedule = get_scheduler(self.args, len(self.train_gen))
 
         # === training loop === #
         # When resuming a run that already reached args.epochs the loop body

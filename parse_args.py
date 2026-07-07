@@ -167,15 +167,23 @@ def parse_args():
                         default = 1e-2,
                         help='Initial Learning Rate')
 
+    parser.add_argument('-scheduler',
+                        type=str,
+                        default='constant',
+                        help='LR schedule: constant (default; holds '
+                        'lr_start), cosine, or warmup')
+
     parser.add_argument('-lr_end',
                         type=float,
                         default = 1e-3,
-                        help='Final Learning Rate')
+                        help='Final Learning Rate (cosine/warmup schedulers '
+                        'only; ignored by constant)')
 
     parser.add_argument('-lr_warmup',
                         type=int,
                         default=10,
-                        help='Warmup epochs for learning rate')
+                        help='Warmup epochs for learning rate (cosine/warmup '
+                        'schedulers only; ignored by constant)')
 
     # === SLURM === #
     parser.add_argument('-slurm',

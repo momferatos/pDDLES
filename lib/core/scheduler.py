@@ -34,3 +34,30 @@ def constant_scheduler(base_value, final_value, epochs,
     schedule = np.linspace(base_value, base_value, epochs * niter_per_ep)
     assert len(schedule) == epochs * niter_per_ep
     return schedule
+
+
+def get_scheduler(args, niter_per_ep):
+    """Build the learning-rate schedule selected by -scheduler.
+
+    'constant' holds lr_start (the historical default; -lr_end/-lr_warmup
+    have no effect). 'cosine' warms up over lr_warmup epochs then cosine-
+    decays lr_start -> lr_end. 'warmup' ramps lr_start -> lr_end over
+    lr_warmup epochs then holds lr_end.
+    """
+    schedulers = {
+        'constant': constant_scheduler,
+        'cosine': cosine_scheduler,
+        'warmup': warmup_scheduler,
+    }
+    if args.scheduler not in schedulers:
+        raise ValueError(
+            "Unknown scheduler '{}'; choose from {}".format(
+                args.scheduler, sorted(schedulers)))
+
+    return schedulers[args.scheduler](
+        base_value=args.lr_start,
+        final_value=args.lr_end,
+        epochs=args.epochs,
+        niter_per_ep=niter_per_ep,
+        warmup_epochs=args.lr_warmup,
+    )
