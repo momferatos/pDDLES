@@ -49,18 +49,24 @@ def main():
     if args.dev == 'gpu':
         if not args.tasks_per_node:
             args.tasks_per_node = 4
-        args.partition = 'gpu'
-        slurm_additional_parameters = {'gres': f'gpu:{args.tasks_per_node}', 'time': f'{args.timeout}'}#,  'gpu-bind': 'single:1}    
+        if args.partition is None:
+            args.partition = 'gpu'
+        slurm_additional_parameters = {'gres': f'gpu:{args.tasks_per_node}', 'time': f'{args.timeout}'}#,  'gpu-bind': 'single:1}
     else:
         if not args.tasks_per_node:
             args.tasks_per_node = 16
-        args.partition = 'cpu'
+        if args.partition is None:
+            args.partition = 'cpu'
         slurm_additional_parameters = {'time': f'{args.timeout}'}
     
     
 
+    # 3D volumetric data: the helical decomposition takes cross products of
+    # 3D wavevectors, so this is fixed, not a user knob.
     args.dimensions = 3
-    
+
+    # velocity ('u', transposed on load) vs passive scalar ('scl'); set by
+    # -scalar because the load-time transpose keys on these exact names.
     args.hdf5_key = ('scl' if args.scalar else 'u')
     args.conv = (nn.Conv2d if args.dimensions == 2 else nn.Conv3d)
     args.batchnorm = (nn.BatchNorm2d if args.dimensions == 2 else nn.BatchNorm3d)

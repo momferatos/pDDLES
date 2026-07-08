@@ -61,11 +61,6 @@ def parse_args():
                         default="gpu",
                         help='Device to use: gpu (default) or cpu')
 
-    parser.add_argument('-device',
-                        type=str,
-                        default="cuda:0",
-                        help='PyTorch device name')
-
     parser.add_argument('-data',
                         type=str,
                         default="data",
@@ -207,8 +202,9 @@ def parse_args():
 
     parser.add_argument('-partition',
                         type=str,
-                        default="gpu",
-                        help='SLURM partition')
+                        default=None,
+                        help='SLURM partition (default: derived from -dev, '
+                        '"gpu" or "cpu")')
 
     parser.add_argument('-account',
                         type=str,
@@ -269,12 +265,6 @@ def parse_args():
                         default=None,
                         type=int)
 
-    parser.add_argument('-dimensions',
-                        help='Feature dimensions: 2 for image, 3 for'
-                        'volumetric data.',
-                        default=3,
-                        type=int)
-
     parser.add_argument('-scaler',
                         help='Data normalization: \'norm\' or \'minmax\'',
                         default='norm',
@@ -290,12 +280,6 @@ def parse_args():
                         help='Training/testing HDF5 filenames\' list file',
                         default='32.dat',
                         type=str)
-
-    parser.add_argument('-hdf5_key',
-                        help='HDF5 dataset key',
-                        default='u',
-                        type=str)
-
 
     parser.add_argument('-actfun',
                         help='PyTorch Activation function name',
