@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import numpy as np
 import matplotlib
 matplotlib.use('QtAgg')
@@ -11,7 +13,7 @@ mode = sys.argv[-1]
 
 alphas = np.linspace(0.05, 0.3, 10)
 
-def spawn(alphas, arch, actfuns):
+def spawn(alphas: np.ndarray, arch: str, actfuns: list[str]) -> None:
     for actfun in actfuns:
         for ialpha, alpha in enumerate(alphas):
             alpha = round(alpha, 2)
@@ -25,7 +27,7 @@ def spawn(alphas, arch, actfuns):
             print()
     return
 
-def collect(alphas, arch, prefixes):
+def collect(alphas: np.ndarray, arch: str, prefixes: list[str]) -> None:
     basepath = os.environ['pDDLES']
     for actfun in actfuns:
         color = (np.random.random(), np.random.random(), np.random.random())

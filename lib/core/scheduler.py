@@ -1,8 +1,13 @@
+from __future__ import annotations
+
+import argparse
+
 import numpy as np
 
 # copy-paste from https://github.com/facebookresearch/dino/blob/main/utils.py
-def cosine_scheduler(base_value, final_value, epochs, niter_per_ep,
-                     warmup_epochs=0, start_warmup_value=0):
+def cosine_scheduler(base_value: float, final_value: float, epochs: int,
+                     niter_per_ep: int, warmup_epochs: int = 0,
+                     start_warmup_value: float = 0) -> np.ndarray:
     warmup_schedule = np.array([])
     warmup_iters = warmup_epochs * niter_per_ep
     if warmup_epochs > 0:
@@ -17,8 +22,8 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep,
     assert len(schedule) == epochs * niter_per_ep
     return schedule
 
-def warmup_scheduler(base_value, final_value, epochs, niter_per_ep,
-                     warmup_epochs=10):
+def warmup_scheduler(base_value: float, final_value: float, epochs: int,
+                     niter_per_ep: int, warmup_epochs: int = 10) -> np.ndarray:
 
     warmup_schedule = np.linspace(base_value, final_value,
                                   warmup_epochs * niter_per_ep)
@@ -28,15 +33,15 @@ def warmup_scheduler(base_value, final_value, epochs, niter_per_ep,
     assert len(schedule) == epochs * niter_per_ep
     return schedule
 
-def constant_scheduler(base_value, final_value, epochs,
-                       niter_per_ep, warmup_epochs=10):
+def constant_scheduler(base_value: float, final_value: float, epochs: int,
+                       niter_per_ep: int, warmup_epochs: int = 10) -> np.ndarray:
 
     schedule = np.linspace(base_value, base_value, epochs * niter_per_ep)
     assert len(schedule) == epochs * niter_per_ep
     return schedule
 
 
-def get_scheduler(args, niter_per_ep):
+def get_scheduler(args: argparse.Namespace, niter_per_ep: int) -> np.ndarray:
     """Build the learning-rate schedule selected by -scheduler.
 
     'constant' holds lr_start (the historical default; -lr_end/-lr_warmup

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import numpy as np
 import matplotlib
 matplotlib.use('QtAgg')
@@ -12,7 +14,7 @@ mode = sys.argv[-1]
 num_blocks = [2, 4, 6, 8, 10]
 prefix = 'WNET'
 
-def spawn(num_blocks, arch, actfuns):
+def spawn(num_blocks: list[int], arch: str, actfuns: list[str]) -> None:
     for actfun in actfuns:
         for nb in num_blocks:
             modelname = f'{arch}_32_{actfun}_{nb}'
@@ -25,7 +27,7 @@ def spawn(num_blocks, arch, actfuns):
             print()
     return
 
-def collect(num_blocks, arch, prefixes):
+def collect(num_blocks: list[int], arch: str, prefixes: list[str]) -> None:
     basepath = os.environ['pDDLES']
     for actfun in actfuns:
         color = (np.random.random(), np.random.random(), np.random.random())

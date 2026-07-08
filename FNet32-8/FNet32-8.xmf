@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Xdmf xmlns:xi="http://www.w3.org/2001/XInclude"  Version="3.0">
+  <Domain>
+    <Grid Name="Grid">
+      <Geometry Origin="" Type="ORIGIN_DXDYDZ">
+        <DataItem DataType="Float" Dimensions="3" Format="XML"
+	Precision="8">0 0 0</DataItem>
+        <DataItem DataType="Float" Dimensions="3"  Format="XML"
+	Precision="8">1 1 1</DataItem>
+      </Geometry>
+      <Topology NumberOfElements=" 32    32    32" Type="3DCoRectMesh"/>
+      <Attribute Center="Node" Name="X" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/X</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="y" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/y</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="y_pred" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/y_pred</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="ls_X" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/ls_X</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="ls_y" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/ls_y</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="ls_y_pred" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/ls_y_pred</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="ss_X" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/ss_X</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="ss_y" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/ss_y</DataItem>
+      </Attribute>
+      <Attribute Center="Node" Name="ss_y_pred" Type="Scalar">
+        <DataItem DataType="Float" Precision="     4" Dimensions ="    32    32    32"   Format="HDF">FNet32-8.h5:/ss_y_pred</DataItem>
+      </Attribute>
+    </Grid>
+  </Domain>
+</Xdmf>

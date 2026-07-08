@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Iterator
+
 import torch
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
@@ -6,11 +10,11 @@ import random
 from lib.datasets.TurbDataset import TurbDataset
 
 class TurbSampler(DistributedSampler):
-    
-    def __init__(self, dataset, num_replicas=None,
-                 rank=None, shuffle=True,
-                 seed=0, drop_last=False):
-        
+
+    def __init__(self, dataset: TurbDataset, num_replicas: int | None = None,
+                 rank: int | None = None, shuffle: bool = True,
+                 seed: int = 0, drop_last: bool = False) -> None:
+
         if num_replicas is None:
             if not dist.is_available():
                 raise RuntimeError(
@@ -80,7 +84,7 @@ class TurbSampler(DistributedSampler):
         self.dataset.load(indices)
         self.indices = indices
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[int]:
         # The per-rank shard (self.indices) is fixed at construction time, since
         # only those files are loaded into memory by dataset.load(). To still get
         # per-epoch variation, reshuffle the *order* of this rank's shard each
@@ -97,5 +101,5 @@ class TurbSampler(DistributedSampler):
     
         
     # If len stays the same you can leave it out, else you can also modify it
-    def __len__(self):
+    def __len__(self) -> int:
         return self.num_samples

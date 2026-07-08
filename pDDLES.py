@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
 import os
 
 import torch
@@ -28,16 +31,16 @@ from parse_args import parse_args
 
 
 class SLURM_Trainer(object):
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
 
-    def __call__(self):
+    def __call__(self) -> None:
 
         init_dist_node(self.args)
         train(None, self.args)
 
 
-def main():
+def main() -> None:
     
     args, parser = parse_args()
     
@@ -106,7 +109,7 @@ def main():
         mp.spawn(train, args = (args,), nprocs = args.ngpus_per_node)
 	
 
-def train(gpu, args):
+def train(gpu: int | None, args: argparse.Namespace) -> None:
 
     print()
     print(f'Full command line: {args.cmdline}')

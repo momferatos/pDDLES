@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import numpy as np
 import matplotlib
 matplotlib.use('QtAgg')
@@ -19,7 +21,7 @@ timeout = '00-04:00:00'
 
 epochs = 100
 
-def spawn():
+def spawn() -> None:
     maxlevels = int(np.log2(float(dim)))
     for level in range(1, maxlevels + 1):
         modelname = f'{dim}-{numblocks}_blocks-{level}_levels_outer-lr_-3'
@@ -32,7 +34,7 @@ def spawn():
         print()
     return
 
-def collect():
+def collect() -> None:
     # spawn() varies the number of wavelet levels; read each run's
     # losses.dat and plot the validation loss against the level count.
     basepath = os.environ['pDDLES']

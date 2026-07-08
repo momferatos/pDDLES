@@ -5,6 +5,10 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+from __future__ import annotations
+
+import argparse
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -26,7 +30,7 @@ class WNet(nn.Module):
     None
 
     """ 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
 
         super(WNet, self).__init__()
 
@@ -47,7 +51,7 @@ class WNet(nn.Module):
         
         return
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         out = self.dataset.to_helical(x)
         out = self.waveletnet(out)
@@ -73,7 +77,7 @@ class WaveletBlock(nn.Module):
     None
     
     """ 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         
         super(WaveletBlock, self).__init__()
         self.args = args
@@ -100,7 +104,7 @@ class WaveletBlock(nn.Module):
         return
 
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
                 
 
         tensorlist = []
@@ -131,7 +135,7 @@ class ScalarWaveletBlock(nn.Module):
     None
     
     """ 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         
         super(ScalarWaveletBlock, self).__init__()
 
@@ -206,7 +210,7 @@ class ScalarWaveletBlock(nn.Module):
         
         return
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         # forward discrete wavelet transform
         if self.dimensions == 2:
@@ -250,7 +254,7 @@ class ScalarWaveletBlock(nn.Module):
                     
         return out
 
-def get_model(args):
+def get_model(args: argparse.Namespace) -> WNet:
 
     model = WNet(args)
 

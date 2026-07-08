@@ -5,6 +5,10 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+from __future__ import annotations
+
+import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,7 +28,7 @@ class ResNetBlock(nn.Module):
 
     """
     
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
         
         super(ResNetBlock, self).__init__()
 
@@ -42,7 +46,7 @@ class ResNetBlock(nn.Module):
 
         return
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         
         out = self.conv(x)
         if self.args.dropout:
@@ -66,7 +70,7 @@ class ResNet(nn.Module):
 
     """
     
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
 
         super(ResNet, self).__init__()
 
@@ -114,7 +118,7 @@ class ResNet(nn.Module):
         self.apply(self.init_weights)
 
 
-    def init_weights(self, m):
+    def init_weights(self, m: nn.Module) -> None:
         """Kaiming-initializes the convolution weights of the ResNet.
 
         """
@@ -126,7 +130,7 @@ class ResNet(nn.Module):
 
         return
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         # to_helical/from_helical default to the physical domain: they return
         # and expect the real 2-channel helical field and do the FFTs
@@ -144,7 +148,7 @@ class ResNet(nn.Module):
 
         return out
 
-def get_model(args):
+def get_model(args: argparse.Namespace) -> ResNet:
 
     model = ResNet(args)
 

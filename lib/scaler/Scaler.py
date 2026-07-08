@@ -3,14 +3,21 @@
 # Georgios Momferatos, 2022-2023                      #
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
+from __future__ import annotations
+
+import argparse
+from typing import Any
+
 import os
 import hashlib
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 from lib.datasets.TurbDataset import get_helper
 
 
-def _cache_key(args, filenames):
+def _cache_key(args: argparse.Namespace,
+               filenames: list[str]) -> dict[str, Any]:
     """Fingerprint of everything the cached scaler constants depend on.
 
     The constants are statistics of the LES-filtered training files, so the
@@ -26,7 +33,7 @@ def _cache_key(args, filenames):
             'files': hashlib.sha256(names.encode()).hexdigest()}
 
 
-def _atomic_save(obj, fname):
+def _atomic_save(obj: Any, fname: str) -> None:
     """Write-then-rename so a concurrent reader never sees a partial file."""
     tmp = f'{fname}.tmp.{os.getpid()}'
     torch.save(obj, tmp)
@@ -46,7 +53,8 @@ class NormScaler(object):
     
     """
     
-    def __init__(self, dataloader, args):
+    def __init__(self, dataloader: DataLoader,
+                 args: argparse.Namespace) -> None:
 
         self.dataloader = dataloader
         self.dataset = get_helper(args)
@@ -60,7 +68,7 @@ class NormScaler(object):
 
         return
 
-    def fit(self):
+    def fit(self) -> None:
         """Determine normalization constants
 
         Parameters
@@ -120,7 +128,8 @@ class NormScaler(object):
         
         return
 
-    def transform(self, X, y, action):
+    def transform(self, X: torch.Tensor, y: torch.Tensor,
+                  action: str) -> tuple[torch.Tensor, torch.Tensor]:
         """Normalize minibatch
 
         Parameters
@@ -160,7 +169,7 @@ class NormScaler(object):
         return X_tr, y_tr
 
     
-    def store(self, args):
+    def store(self, args: argparse.Namespace) -> None:
         fname = os.path.join(args.h5path, 'norm.pt')
         tens = {'key': _cache_key(args, self.dataloader.dataset.filenames),
                 'vals': torch.stack([self.X_mean, self.X_std,
@@ -169,7 +178,7 @@ class NormScaler(object):
 
         return
 
-    def load(self, args):
+    def load(self, args: argparse.Namespace) -> int | None:
         fname = os.path.join(args.h5path, 'norm.pt')
         if not os.path.isfile(fname):
             return
@@ -202,7 +211,8 @@ class MinmaxScaler(object):
     
     """
     
-    def __init__(self, dataloader, args):
+    def __init__(self, dataloader: DataLoader,
+                 args: argparse.Namespace) -> None:
 
         self.dataloader = dataloader
         self.dataset = get_helper(args)
@@ -218,7 +228,7 @@ class MinmaxScaler(object):
         return
 
 
-    def fit(self):
+    def fit(self) -> None:
         """Determine normalization constants
 
         Parameters
@@ -254,7 +264,8 @@ class MinmaxScaler(object):
 
         return
 
-    def transform(self, X, y, action):
+    def transform(self, X: torch.Tensor, y: torch.Tensor,
+                  action: str) -> tuple[torch.Tensor, torch.Tensor]:
         """Normalize minibatch
 
         Parameters
@@ -303,7 +314,7 @@ class MinmaxScaler(object):
         return X_tr, y_tr
 
 
-    def store(self, args):
+    def store(self, args: argparse.Namespace) -> None:
         fname = os.path.join(args.h5path, 'minmax.pt')
         tens = {'key': _cache_key(args, self.dataloader.dataset.filenames),
                 'vals': torch.tensor([float(self.X_min), float(self.X_max),
@@ -312,7 +323,7 @@ class MinmaxScaler(object):
 
         return
 
-    def load(self, args):
+    def load(self, args: argparse.Namespace) -> int | None:
         fname = os.path.join(args.h5path, 'minmax.pt')
         if not os.path.isfile(fname):
             return
@@ -346,12 +357,13 @@ class DummyScaler(object):
     
     """
     
-    def __init__(self, dataloader, args):
+    def __init__(self, dataloader: DataLoader,
+                 args: argparse.Namespace) -> None:
             
         return
 
 
-    def fit(self):
+    def fit(self) -> None:
         """Determine normalization constants
 
         Parameters
@@ -366,7 +378,8 @@ class DummyScaler(object):
 
         return
 
-    def transform(self, X, y, action):
+    def transform(self, X: torch.Tensor, y: torch.Tensor,
+                  action: str) -> tuple[torch.Tensor, torch.Tensor]:
         """Normalize minibatch
 
         Parameters
@@ -388,14 +401,16 @@ class DummyScaler(object):
 
         return X, y
 
-    def store(self, args):
+    def store(self, args: argparse.Namespace) -> None:
         return
 
-    def load(self, args):
+    def load(self, args: argparse.Namespace) -> int | None:
         return
 
 
-def get_scaler(dataloader, args):
+def get_scaler(
+        dataloader: DataLoader,
+        args: argparse.Namespace) -> NormScaler | MinmaxScaler | DummyScaler:
 
     scalers = {
         'norm': NormScaler,

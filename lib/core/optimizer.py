@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+import argparse
+
+import torch.nn as nn
 import torch.optim as Opt
 
-def get_optimizer(model, args):
+def get_optimizer(model: nn.Module, args: argparse.Namespace) -> Opt.Optimizer:
 
     # classes, not instances: the dict-of-instances form built all three
     # optimizers on every call and, on an unknown name, returned the string

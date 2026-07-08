@@ -12,8 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
+import argparse
+from typing import Any
+
+import numpy as np
 import torch
+import torch.nn as nn
 import torch.distributed as dist
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
+from lib.datasets.TurbDataset import TurbDataset
 from lib.utils.file import checkdir
 from lib.utils.tensorboard import get_writer, TBWriter
 from lib.core.scheduler import get_scheduler
@@ -26,8 +36,10 @@ import sys
 
 class Trainer:
 
-    def __init__(self, args, train_loader, test_loader, valid_loader,
-                 model, loss, optimizer, dataset, scaler):
+    def __init__(self, args: argparse.Namespace, train_loader: DataLoader,
+                 test_loader: DataLoader, valid_loader: DataLoader,
+                 model: nn.Module, loss: nn.Module, optimizer: Optimizer,
+                 dataset: TurbDataset, scaler: Any) -> None:
 
         self.args = args
         self.train_gen = train_loader
@@ -69,7 +81,7 @@ class Trainer:
             checkdir("{}/weights/{}/".format(args.out, self.args.model), args.reset)
 
 
-    def _global_max(self, value):
+    def _global_max(self, value: float) -> float:
         """Reduce a scalar to its global maximum across all ranks.
 
         Divergence is tracked as a per-rank running max; this collapses it to
@@ -82,7 +94,7 @@ class Trainer:
         dist.all_reduce(t, op=dist.ReduceOp.MAX)
         return t.item()
 
-    def _stop_if_nonfinite(self, value, what):
+    def _stop_if_nonfinite(self, value: float, what: str) -> None:
         """Collectively stop every rank if any rank's loss is non-finite.
 
         A bare sys.exit on the offending rank alone leaves the other ranks
@@ -101,7 +113,8 @@ class Trainer:
             cleanup_distributed()
             sys.exit(1)
 
-    def train_one_epoch(self, epoch, lr_schedule, args):
+    def train_one_epoch(self, epoch: int, lr_schedule: np.ndarray,
+                        args: argparse.Namespace) -> None:
 
         metric_logger = MetricLogger(args, delimiter="  ")
         header = 'Epoch: [{}/{}]'.format(epoch, self.args.epochs)
@@ -247,7 +260,7 @@ class Trainer:
             self.train_losses.append(
                 metric_logger.meters['train_loss'].global_avg)
 
-    def fit(self):
+    def fit(self) -> tuple[list[float], list[float], float]:
 
         # === Resume === #
         self.load_if_available()
@@ -334,7 +347,7 @@ class Trainer:
         return self.train_losses, self.test_losses, self.val_loss
 
     
-    def load_if_available(self):
+    def load_if_available(self) -> None:
 
         ckpts = sorted(
             glob(f'{self.args.out}/weights/{self.args.model}/Epoch_*.pth'))
@@ -356,7 +369,7 @@ class Trainer:
             print("Starting from scratch")
 
 
-    def save(self, epoch):
+    def save(self, epoch: int) -> None:
 
         if self.args.fp16:
             state = dict(epoch=epoch+1, 

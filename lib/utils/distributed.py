@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+import argparse
+from types import FrameType
+from typing import Any, Iterable, Iterator
+
 import torch
 import os, random, socket
 import numpy as np
@@ -19,22 +25,22 @@ https://github.com/facebookresearch/detr/blob/master/util/misc.py
 """
 
 
-    
-def setup_for_distributed(is_master):
+
+def setup_for_distributed(is_master: bool) -> None:
     """
     This function disables printing when not in master process
     """
     import builtins as __builtin__
     builtin_print = __builtin__.print
 
-    def print(*args, **kwargs):
+    def print(*args: Any, **kwargs: Any) -> None:
         force = kwargs.pop('force', False)
         if is_master or force:
             builtin_print(*args, **kwargs)
 
     __builtin__.print = print
 
-def fix_random_seeds(seed=31):
+def fix_random_seeds(seed: int = 31) -> None:
     """
     Fix random seeds.
     """
@@ -42,7 +48,7 @@ def fix_random_seeds(seed=31):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
-def get_shared_folder(args) -> Path:
+def get_shared_folder(args: argparse.Namespace) -> Path:
     path = os.environ['pDDLES']
     if Path(path).is_dir():
         p = Path(os.path.join(path, args.prefix))
@@ -51,7 +57,7 @@ def get_shared_folder(args) -> Path:
     raise RuntimeError("No shared folder available")
 
 
-def init_dist_node(args):
+def init_dist_node(args: argparse.Namespace) -> None:
 
     if args.slurm:
 
@@ -64,7 +70,7 @@ def init_dist_node(args):
         # distributed parameters
         args.rank = int(os.getenv('SLURM_NODEID')) * args.ngpus_per_node
         args.world_size = int(os.getenv('SLURM_NNODES')) * args.ngpus_per_node
-            
+
     else:
 
         if args.dev == 'gpu':
@@ -93,8 +99,8 @@ def init_dist_node(args):
         os.environ["MASTER_PORT"] = str(args.port)
         #os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
         #os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-    
-def init_dist_gpu(gpu, args):
+
+def init_dist_gpu(gpu: int | None, args: argparse.Namespace) -> None:
 
     if args.slurm:
         job_env = submitit.JobEnvironment()
@@ -104,7 +110,7 @@ def init_dist_gpu(gpu, args):
         args.localrank = job_env.local_rank
         args.rank = job_env.global_rank
         nodelist  = os.environ["SLURM_JOB_NODELIST"]
-        
+
         # 6. MASTER_ADDR
         cmd = "scontrol show hostnames " + os.getenv("SLURM_JOB_NODELIST")
         stdout = subprocess.check_output(cmd.split())
@@ -121,17 +127,17 @@ def init_dist_gpu(gpu, args):
             port = 40000 + jobid % 20000
 
         print(f'Process {args.rank}/{args.world_size} @ {host_name}:{port}')
-    
+
         # Set All the Necessary Environment Variables!
         os.environ["MASTER_ADDR"] = host_name
         os.environ["MASTER_PORT"] = str(port)
 #        os.environ["TORCH_CPP_LOG_LEVEL"]="INFO"
 #        os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
-        
+
     else:
         args.gpu = gpu
         args.rank += gpu
-    
+
     if args.dev == 'gpu':
         backend = 'nccl'
         # Bind each rank to its node-local GPU. Under slurm every task sees
@@ -157,13 +163,13 @@ def init_dist_gpu(gpu, args):
     fix_random_seeds()
 
     cudnn.benchmark = True
-    
+
     dist.barrier()
 
     args.main = (args.rank == 0)
     setup_for_distributed(args.main)
 
-def cleanup_distributed():
+def cleanup_distributed() -> None:
     """Tear down the process group on exit.
 
     Without this, NCCL warns about leaked resources at program exit. The
@@ -173,14 +179,14 @@ def cleanup_distributed():
         dist.barrier()
         dist.destroy_process_group()
 
-def handle_sigusr1(signum, frame):
+def handle_sigusr1(signum: int, frame: FrameType | None) -> None:
     os.system(f'scontrol requeue {os.getenv("SLURM_JOB_ID")}')
     exit()
 
-def handle_sigterm(signum, frame):
+def handle_sigterm(signum: int, frame: FrameType | None) -> None:
     pass
 
-def is_dist_avail_and_initialized():
+def is_dist_avail_and_initialized() -> bool:
     if not dist.is_available():
         return False
     if not dist.is_initialized():
@@ -192,25 +198,26 @@ class SmoothedValue(object):
     window or the global series average.
     """
 
-    def __init__(self, window_size=20, fmt=None):
+    def __init__(self, window_size: int = 20, fmt: str | None = None) -> None:
         if fmt is None:
             fmt = "{median:.6e} ({global_avg:.6e})"
         self.deque = deque(maxlen=window_size)
         self.total = 0.0
         self.count = 0
         self.fmt = fmt
-        
-        
-    def update(self, value, n=1, args=None):
+
+
+    def update(self, value: float, n: int = 1,
+               args: argparse.Namespace | None = None) -> None:
         self.args = args
         self.deque.append(value)
         self.count += n
         self.total += value * n
         if args:
             self.device = args.device
-            
-            
-    def synchronize_between_processes(self):
+
+
+    def synchronize_between_processes(self) -> None:
         """
         Warning: does not synchronize the deque!
         """
@@ -225,28 +232,28 @@ class SmoothedValue(object):
         self.total = t[1]
 
     @property
-    def median(self):
+    def median(self) -> float:
         d = torch.tensor(list(self.deque))
         return d.median().item()
 
     @property
-    def avg(self):
+    def avg(self) -> float:
         d = torch.tensor(list(self.deque))
         return d.mean().item()
 
     @property
-    def global_avg(self):
+    def global_avg(self) -> float:
         return self.total / self.count
 
     @property
-    def max(self):
+    def max(self) -> float:
         return max(self.deque)
 
     @property
-    def value(self):
+    def value(self) -> float:
         return self.deque[-1]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.fmt.format(
             median=self.median,
             avg=self.avg,
@@ -256,19 +263,19 @@ class SmoothedValue(object):
 
 
 class MetricLogger(object):
-    def __init__(self, args, delimiter="\t"):
+    def __init__(self, args: argparse.Namespace, delimiter: str = "\t") -> None:
         self.meters = defaultdict(SmoothedValue)
         self.delimiter = delimiter
         self.args = args
 
-    def update(self, **kwargs):
+    def update(self, **kwargs: Any) -> None:
         for k, v in kwargs.items():
             if isinstance(v, torch.Tensor):
                 v = v.item()
             # assert isinstance(v, (float, int))
             self.meters[k].update(v, args=self.args)
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Any:
         if attr in self.meters:
             return self.meters[attr]
         if attr in self.__dict__:
@@ -276,28 +283,30 @@ class MetricLogger(object):
         raise AttributeError("'{}' object has no attribute '{}'".format(
             type(self).__name__, attr))
 
-    def __str__(self):
+    def __str__(self) -> str:
         loss_str = []
         for name, meter in self.meters.items():
-            
+
             if isinstance(meter, float):
                 string = f'{meter:.5e}'
             else:
                 string = str(meter)
-                
+
             loss_str.append(
                 "{}: {}".format(name, string)
             )
         return self.delimiter.join(loss_str)
 
-    def synchronize_between_processes(self):
+    def synchronize_between_processes(self) -> None:
         for meter in self.meters.values():
             meter.synchronize_between_processes()
 
-    def add_meter(self, name, meter):
+    def add_meter(self, name: str, meter: SmoothedValue) -> None:
         self.meters[name] = meter
 
-    def log_every(self, iterable, print_freq, args, header=None):
+    def log_every(self, iterable: Iterable[Any], print_freq: int,
+                  args: argparse.Namespace,
+                  header: str | None = None) -> Iterator[Any]:
         i = 0
         if not header:
             header = ''

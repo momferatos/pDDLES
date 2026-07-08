@@ -5,6 +5,11 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+from __future__ import annotations
+
+import argparse
+from typing import Any
+
 import h5py
 import numpy as np
 import torch
@@ -30,10 +35,10 @@ class TurbDataset(Dataset):
     Attributes
     ----------
     None
-    
+
     """
-    
-    def __init__(self, filenames, args):
+
+    def __init__(self, filenames: list[str], args: argparse.Namespace) -> None:
         self.filenames = filenames # HDF5 filenames' list
         self.args = args
         self.eps = 1.0e-5
@@ -41,16 +46,16 @@ class TurbDataset(Dataset):
         self.dims = (-3, -2, -1)
         self.datadict = {}
         self.indices = []
-        
+
         self.filesize = self.count_file_size()
         self.datalist = []
         if self.args.noload and self.args.dev == 'gpu' and args.copy:
             if self.filenames:
-                self.copy()            
+                self.copy()
 
         return
 
-    def _helical_basis(self):
+    def _helical_basis(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Helical unit vectors h+/h- on self.device (built on first use).
 
         Lazy so that data-loading instances carry no device tensors:
@@ -107,7 +112,7 @@ class TurbDataset(Dataset):
                                hminus.to(self.device))
         return self._helical_cache
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, Any]:
         # DataLoader workers pickle the dataset: strip the lazily built
         # spectral caches so no device tensors cross process boundaries;
         # they rebuild on first use wherever they are next needed.
@@ -118,26 +123,26 @@ class TurbDataset(Dataset):
         return state
 
 
-    def __len__(self):
+    def __len__(self) -> int:
         # The true file count. Per-rank shard sizing is TurbSampler's job;
         # dividing by world_size here shrank every sampler-less DataLoader
         # (validation, scaler fit) to the first 1/world_size of its files.
         return len(self.filenames)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> torch.Tensor:
 
-        
+
         try:
             y = self.datadict[idx]
         except(KeyError):
             # print(self.args.rank, idx)
             filename = self.filenames[idx]
             y = self.filename_to_tensor(filename)
-            
+
         return y
 
 
-    def _wave_magnitudes(self, n):
+    def _wave_magnitudes(self, n: int) -> torch.Tensor:
         """Wavevector-magnitude grid for resolution n (cached on CPU).
 
         Depends only on n and args.dimensions, both fixed, so build it once
@@ -157,7 +162,7 @@ class TurbDataset(Dataset):
         self._wvms_cache = (n, wvms)
         return wvms
 
-    def _truncation_mask(self, n, device):
+    def _truncation_mask(self, n: int, device: torch.device) -> torch.Tensor:
         """Patterson-Orszag dealiasing mask (cached per n and device)."""
         cache = getattr(self, '_trunc_mask_cache', None)
         if cache is not None and cache[0] == n and cache[1] == device:
@@ -168,7 +173,7 @@ class TurbDataset(Dataset):
         self._trunc_mask_cache = (n, device, mask)
         return mask
 
-    def _les_filter_mask(self, n, device):
+    def _les_filter_mask(self, n: int, device: torch.device) -> torch.Tensor:
         """Sharp-cutoff LES filter mask (cached per n and device)."""
         cache = getattr(self, '_les_mask_cache', None)
         if cache is not None and cache[0] == n and cache[1] == device:
@@ -178,7 +183,7 @@ class TurbDataset(Dataset):
         self._les_mask_cache = (n, device, mask)
         return mask
 
-    def truncate(self, x):
+    def truncate(self, x: torch.Tensor) -> torch.Tensor:
         """Truncate a batch to DNS resolution
 
         Parameters
@@ -202,7 +207,7 @@ class TurbDataset(Dataset):
         return out
 
 
-    def LES_filter(self, y):
+    def LES_filter(self, y: torch.Tensor) -> torch.Tensor:
         """Apply a sharp cutoff spectral LES filter
 
         Parameters
@@ -227,7 +232,7 @@ class TurbDataset(Dataset):
 
         return y
 
-    def wave_vectors(self, n):
+    def wave_vectors(self, n: int) -> tuple[torch.Tensor, torch.Tensor]:
 
         # k and kappa depend only on n and device, both fixed: build once.
         cache = getattr(self, '_wave_vectors_cache', None)
@@ -256,7 +261,7 @@ class TurbDataset(Dataset):
         self._wave_vectors_cache = (n, k, kappa)
         return k, kappa
 
-    def helical_checks(self, X):
+    def helical_checks(self, X: torch.Tensor) -> None:
 
         k, kappa = self.wave_vectors(self.args.n)
         hplus, hminus = self._helical_basis()
@@ -284,7 +289,7 @@ class TurbDataset(Dataset):
                            torch.conj_physical(hminus), dim=0)
         mask = (d11 != 0.0)
         d11 = d11.abs().max()
-        
+
         print('delta: ', torch.Tensor([[d00, d01], [d10, d11]]))
 
         X = X.to(self.device)
@@ -295,10 +300,11 @@ class TurbDataset(Dataset):
         print('div: ', torch.max(torch.abs(self.divergence(X_tr))))
 
         sys.exit(0)
-              
+
         return
-    
-    def to_helical(self, u, outdomain='physical'):
+
+    def to_helical(self, u: torch.Tensor,
+                   outdomain: str = 'physical') -> torch.Tensor:
 
         fu = torch.fft.rfftn(u, dim=self.dims, norm='ortho')
 
@@ -306,7 +312,7 @@ class TurbDataset(Dataset):
         hplus = hplus.unsqueeze(0).expand(u.shape[0], -1, -1, -1, -1)
         hminus = hminus.unsqueeze(0).expand(
             u.shape[0], -1, -1, -1, -1)
-        
+
         fuplus = torch.einsum('bi...,bi...->b...',
                               fu, torch.conj_physical(hplus)).unsqueeze(1)
         fuminus = torch.einsum('bi...,bi...->b...',
@@ -316,13 +322,14 @@ class TurbDataset(Dataset):
             uplus = torch.fft.irfftn(fuplus, dim=self.dims, norm='ortho')
             uminus = torch.fft.irfftn(fuminus, dim=self.dims, norm='ortho')
             out = torch.cat((uplus, uminus), dim=1)
-        elif outdomain == 'fourier':    
+        elif outdomain == 'fourier':
             out = torch.cat((fuplus, fuminus), dim=1)
-        
+
         return out
 
 
-    def from_helical(self, fupm, indomain='physical'):
+    def from_helical(self, fupm: torch.Tensor,
+                     indomain: str = 'physical') -> torch.Tensor:
 
         if indomain == 'physical':
             uplus = fupm[:, 0, :, :, :].unsqueeze(1)
@@ -332,66 +339,66 @@ class TurbDataset(Dataset):
         elif indomain == 'fourier':
             fuplus = fupm[:, 0, :, :, :].unsqueeze(1)
             fuminus = fupm[:, 1, :, :, :].unsqueeze(1)
-                
+
         hplus, hminus = self._helical_basis()
         hplus = hplus.unsqueeze(0).expand(fupm.shape[0], -1, -1, -1, -1)
 
         hminus = hminus.unsqueeze(0).expand(
             fupm.shape[0], -1, -1, -1, -1)
-        
-                
+
+
         fu = fuplus * hplus + fuminus * hminus
 
         u = torch.fft.irfftn(fu, dim=self.dims, norm='ortho')
-        
+
         return u
 
-    def divergence(self, X):
+    def divergence(self, X: torch.Tensor) -> torch.Tensor:
 
         k, _ = self.wave_vectors(self.args.n)
 
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho')
         div = torch.linalg.vecdot(1j * k, torch.conj_physical(fX), dim=1)
         div = torch.fft.irfftn(div, dim=self.dims, norm='ortho')
         div = torch.mean(torch.abs(div))
-        
+
         return div
 
-    def longitudinal_gradients(self, X):
+    def longitudinal_gradients(self, X: torch.Tensor) -> torch.Tensor:
 
         k, _ = self.wave_vectors(self.args.n)
 
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho')
         lgrads = -1j * k * fX
         lgrads= torch.fft.irfftn(lgrads, dim=self.dims, norm='ortho')
 
         lgrads = lgrads.flatten()
-        
+
         return lgrads
 
-    def vorticity(self, X):
-        
+    def vorticity(self, X: torch.Tensor) -> torch.Tensor:
+
         k, _ = self.wave_vectors(self.args.n)
-        
+
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
         # forward real-to-half-complex FF
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho') 
+        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho')
         w = torch.cross(1j * k, fX, dim=1)
         w = torch.fft.irfftn(w, dim=self.dims, norm='ortho')
-        
+
         return w
 
-    def subgrid_scale_tensor(self, y):
+    def subgrid_scale_tensor(self, y: torch.Tensor) -> torch.Tensor:
 
-        
+
         tens1 = torch.einsum('bi...,bj...->bij...', y, y)
         tens2 = self.LES_filter(tens1)
-        
+
         y_filt = self.LES_filter(y)
         tens3 = torch.einsum('bi...,bj...->bij...', y_filt, y_filt)
         tens = tens2 - tens3
@@ -406,51 +413,51 @@ class TurbDataset(Dataset):
         delta = delta.to(self.device)
         tens = tens - 1. / 3. * delta * trace
 
-                    
+
         return tens
 
-    def filename_to_tensor(self, filename):
+    def filename_to_tensor(self, filename: str) -> torch.Tensor:
         with h5py.File(filename, 'r') as h5file:
             # 2d or 3d data, using float32 for better performance on the GPU
             y = np.array(h5file[self.args.hdf5_key], dtype='float32')
-            # number of file 
+            # number of file
             num_file = 0 #int(np.array(h5file['nfile'])[0])
             # time instant
             time = float(np.array(h5file['time'])[0])
-            
+
             if self.args.hdf5_key == 'u':
                 y = y.transpose([3, 2, 1, 0])
-                
+
             y = torch.from_numpy(y)
             # truncate to Patterson-Orszag dealiasing limit
-            y = self.truncate(y) 
+            y = self.truncate(y)
             if self.args.hdf5_key == 'scl':
                 # Add extra tensor dimension required by PyTorch
-                y = y.unsqueeze(0) 
-                
+                y = y.unsqueeze(0)
+
         return y
-    
-    def count_file_size(self):
-        
+
+    def count_file_size(self) -> float:
+
 
         if not self.filenames:
             return 0.0
-        
+
         y = self.filename_to_tensor(self.filenames[0])
 
         size = sys.getsizeof(y.storage)
         size *= len(self.filenames)
         GB = 1024.0 ** 3
         size /= GB
-        
+
         return size
-    
-    def copy(self):
+
+    def copy(self) -> None:
 
         if not self.filenames or self.args.localrank !=0:
             return
-        
-        dest_dir = os.environ['LOCALSCRATCH']        
+
+        dest_dir = os.environ['LOCALSCRATCH']
         dest_dir = os.path.join(dest_dir, 'tmp')
         pathlib.Path(dest_dir).mkdir(parents=True, exist_ok=True)
 
@@ -467,13 +474,13 @@ class TurbDataset(Dataset):
                     filenames.append(dest_filename)
                 except(IOError):
                     filenames.append(src_filename)
-                    
+
 
         self.filenames = filenames
-            
+
         return
 
-    def load(self, indices):
+    def load(self, indices: list[int]) -> None:
         if self.args.noload:
             return
         self.indices = indices
@@ -485,10 +492,10 @@ class TurbDataset(Dataset):
             y = self.filename_to_tensor(filename)
             self.datadict[idx] = y
         return
-    
+
 _helper_cache = {}
 
-def get_helper(args):
+def get_helper(args: argparse.Namespace) -> TurbDataset:
     """Shared file-less TurbDataset for the spectral utilities.
 
     Models, blocks, losses and scalers only need the transform methods
@@ -504,7 +511,8 @@ def get_helper(args):
     return _helper_cache[key]
 
 
-def get_dataset(filenames, args):
+def get_dataset(filenames: list[str],
+                args: argparse.Namespace) -> TurbDataset:
 
     # === Get Dataset === #
     train_dataset = TurbDataset(filenames, args)

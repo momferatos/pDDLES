@@ -4,6 +4,11 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+from __future__ import annotations
+
+import argparse
+from typing import Any
+
 import os
 import h5py
 import numpy as np
@@ -12,12 +17,15 @@ from matplotlib import cm
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from PIL import Image
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
 from lib.datasets.TurbDataset import TurbDataset
 
-def plot_results(args, model, train_losses, test_losses,
-                 dataset, dataloader, scaler):
+def plot_results(args: argparse.Namespace, model: nn.Module,
+                 train_losses: list[float], test_losses: list[float],
+                 dataset: TurbDataset, dataloader: DataLoader,
+                 scaler: Any) -> None:
     
     """Plot results
 
@@ -227,7 +235,7 @@ def plot_results(args, model, train_losses, test_losses,
     return
 
 
-def batch_to_numpy(X, dataset):
+def batch_to_numpy(X: torch.Tensor, dataset: TurbDataset) -> np.ndarray:
 
     X = dataset.vorticity(X)
     X = torch.linalg.vector_norm(X, dim=1)
@@ -239,7 +247,8 @@ def batch_to_numpy(X, dataset):
 
     return X
 
-def write_xdmf_file(h5_filename, xmf_filename, args):
+def write_xdmf_file(h5_filename: str, xmf_filename: str,
+                    args: argparse.Namespace) -> None:
     """Writes Xdmf file for visualzation of the corresponding HDF5 file with 
        Paraview
 
@@ -359,7 +368,8 @@ def write_xdmf_file(h5_filename, xmf_filename, args):
         f.write('  </Domain>\n')
         f.write('</Xdmf>\n')
 
-def spectrum(X, args):
+def spectrum(X: torch.Tensor,
+             args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     """Returns the energy spectrum of a single sample
 
     Parameters
@@ -404,7 +414,7 @@ def spectrum(X, args):
 
     return wvs_spec, spec
 
-def plot_FNet(model, args):
+def plot_FNet(model: nn.Module, args: argparse.Namespace) -> None:
     plt.figure(figsize=(15, 10))
     plt.xscale('log')
     for param_tensor in model.state_dict():
@@ -418,7 +428,9 @@ def plot_FNet(model, args):
     plt.savefig(os.path.join(args.out, 'alphas.png'))
     return
 
-def plot_histograms(dataloader, model, dataset, scaler, args):
+def plot_histograms(dataloader: DataLoader, model: nn.Module,
+                    dataset: TurbDataset, scaler: Any,
+                    args: argparse.Namespace) -> None:
 
     fig = plt.figure(figsize=(10.0, 7.5))
     plt.yscale('log')

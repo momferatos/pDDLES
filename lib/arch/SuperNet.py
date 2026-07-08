@@ -5,6 +5,11 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+from __future__ import annotations
+
+import argparse
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from lib.datasets.TurbDataset import get_helper
@@ -28,7 +33,8 @@ class DownNet(nn.Module):
     None
 
     """ 
-    def __init__(self, in_dim, out_dim, args):
+    def __init__(self, in_dim: int, out_dim: int,
+                 args: argparse.Namespace) -> None:
 
         super(DownNet, self).__init__()
 
@@ -50,7 +56,7 @@ class DownNet(nn.Module):
         return
 
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         mode = 'bicubic' if self.args.dimensions == 2 else 'trilinear'
         out = F.interpolate(x, self.out_dim, mode=mode) # downscale
@@ -83,7 +89,8 @@ class UpNet(nn.Module):
     None
 
     """ 
-    def __init__(self, in_dim, out_dim, args):
+    def __init__(self, in_dim: int, out_dim: int,
+                 args: argparse.Namespace) -> None:
 
         super(UpNet, self).__init__()
 
@@ -105,7 +112,7 @@ class UpNet(nn.Module):
         return
 
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         mode = 'bicubic' if self.args.dimensions == 2 else 'trilinear'
         out = F.interpolate(x, self.out_dim, mode=mode) # upscale
@@ -130,7 +137,7 @@ class SuperNet(nn.Module):
     None
 
     """ 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
 
         super(SuperNet, self).__init__()
 
@@ -182,7 +189,7 @@ class SuperNet(nn.Module):
         return
 
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         out = self.conv_first(x)
         if self.args.dropout:
@@ -202,7 +209,7 @@ class SuperNet(nn.Module):
 
         return out
 
-def get_model(args):
+def get_model(args: argparse.Namespace) -> SuperNet:
 
     model = SuperNet(args)
 

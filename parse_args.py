@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import torch
 import argparse
 import sys
 
 
-def str2bool(v):
+def str2bool(v: str | bool) -> bool:
     """argparse type that parses booleans from strings.
 
     Needed because type=bool runs bool('False') == True, so any non-empty
@@ -18,7 +20,7 @@ def str2bool(v):
     raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def parse_args():
+def parse_args() -> tuple[argparse.Namespace, argparse.ArgumentParser]:
 
     parser = argparse.ArgumentParser(description='Template')
 

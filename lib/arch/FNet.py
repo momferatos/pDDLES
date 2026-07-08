@@ -4,6 +4,10 @@
 # g.momferatos@ipta.demokritos.gr                     #
 #######################################################
 
+from __future__ import annotations
+
+import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,7 +27,7 @@ class FNet(nn.Module):
     None
 
     """ 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
 
         super(FNet, self).__init__()
         self.args = args
@@ -39,7 +43,7 @@ class FNet(nn.Module):
         
         return
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         
         out = self.dataset.to_helical(x, outdomain='fourier')
         out = self.fouriernet(out)
@@ -65,7 +69,7 @@ class FourierBlock(nn.Module):
     None
     
     """ 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace) -> None:
 
         super(FourierBlock, self).__init__()
 
@@ -115,7 +119,7 @@ class FourierBlock(nn.Module):
         return
 
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
 
         if self.idxs.device != x.device:
             # constant index map: move it alongside the input once, rather
@@ -134,7 +138,7 @@ class FourierBlock(nn.Module):
             
         return out
 
-def get_model(args):
+def get_model(args: argparse.Namespace) -> FNet:
 
     model = FNet(args)
 
