@@ -470,7 +470,11 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                     yyrolled = torch.roll(yy, shifts=shift, dims=dim)
                     diff = yy - yyrolled
                     vec = torch.zeros_like(diff)
-                    vec[:, dim, :, :] = np.sign(step)
+                    # sign of the separation direction, not step: step is
+                    # always positive, so np.sign(step) gave the negative
+                    # shifts a +1 longitudinal direction, flipping their sign
+                    # and symmetrizing the increment PDF (killing its skewness)
+                    vec[:, dim, :, :] = np.sign(shift)
                     incr = torch.linalg.vecdot(vec, diff, dim=1)
                     incr = incr.flatten()
                     data.append(incr)
