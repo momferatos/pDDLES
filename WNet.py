@@ -33,26 +33,29 @@ def spawn():
     return
 
 def collect():
+    # spawn() varies the number of wavelet levels; read each run's
+    # losses.dat and plot the validation loss against the level count.
     basepath = os.environ['pDDLES']
     maxlevels = int(np.log2(float(dim)))
+    levels = []
+    min_test_losses = []
+    min_train_losses = []
+    val_losses = []
     for level in range(1, maxlevels + 1):
-        color = (np.random.random(), np.random.random(), np.random.random())
-        min_test_losses = []
-        min_train_losses = []
-        val_losses = []
-        for alpha in alphas:
-            alpha = round(alpha, 2)
-            path = os.path.join(arch, f'{dim}-{numblocks}_blocks-{level}_levels_outer-lr_-3')
-            path = os.path.join(basepath, path, 'losses.dat')
-            with open(path, 'r') as f:
-                string = f.readline()
-            items = string.split()
-            min_test_losses.append(float(items[2]))
-            min_train_losses.append(float(items[3]))
-            val_losses.append(float(items[-1]))
-        plt.plot(alphas, val_losses,  color=color, label=f'{actfun}')
- #       plt.plot(alphas, min_test_losses, '.-',  color=color, label=f'{prefix}: Test')
- #       plt.plot(alphas, min_train_losses, '--', color=color, label=f'{prefix}: Train')
+        path = os.path.join(arch, f'{dim}-{numblocks}_blocks-{level}_levels_outer-lr_-3')
+        path = os.path.join(basepath, path, 'losses.dat')
+        with open(path, 'r') as f:
+            string = f.readline()
+        items = string.split()
+        min_test_losses.append(float(items[2]))
+        min_train_losses.append(float(items[3]))
+        val_losses.append(float(items[-1]))
+        levels.append(level)
+    plt.plot(levels, val_losses, marker='o', label='Validation')
+ #  plt.plot(levels, min_test_losses, '.-', label='Test')
+ #  plt.plot(levels, min_train_losses, '--', label='Train')
+    plt.xlabel('Wavelet levels')
+    plt.ylabel('Validation loss')
     plt.legend(loc='best')
     plt.show()
 
@@ -60,5 +63,5 @@ def collect():
 if mode == '-spawn':
     spawn()
 else:
-    collect(alphas, arch, actfuns)
+    collect()
     

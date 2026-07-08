@@ -51,5 +51,5 @@ arch = 'WNet'
 if mode == '-spawn':
     spawn(num_blocks, arch, actfuns)
 else:
-    collect(alphas, arch, actfuns)
+    collect(num_blocks, arch, actfuns)
     
