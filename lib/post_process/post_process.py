@@ -106,10 +106,10 @@ def plot_results(args, model, train_losses, test_losses,
                          label='Prediction $y_p$')
         k_LES_cutoff = args.alpha * np.max(kX)
         plt.axvline(x=k_LES_cutoff, color='red',
-                          linestyle='--', label='LES filter cutoff $2 \pi / \Delta$')
+                          linestyle='--', label=r'LES filter cutoff $2 \pi / \Delta$')
         k_DNS_cutoff = np.sqrt(2.0) / 3.0 * np.max(kX)
         plt.axvline(x=k_DNS_cutoff, color='orange',
-                        linestyle='--', label='DNS resolution cutoff $\simeq 2 \pi / \eta$')
+                        linestyle='--', label=r'DNS resolution cutoff $\simeq 2 \pi / \eta$')
         plt.ylabel('$E(k)$')
         plt.xlabel('Wavenumber $k$')
         plt.legend(loc='best')
@@ -143,12 +143,12 @@ def plot_results(args, model, train_losses, test_losses,
 
         aux = batch_to_numpy(filtered_y, dataset)
         axs[1, 1].imshow(aux[-1], cmap=cmap)
-        title = 'Target large scales $\overline{y} = X$'
+        title = r'Target large scales $\overline{y} = X$'
         axs[1, 1].set_title(title)
 
         aux = batch_to_numpy(filtered_y_pred, dataset)
         axs[1, 2].imshow(aux[-1], cmap=cmap)
-        axs[1, 2].set_title('Predicted large scales $\overline{y}_p$')
+        axs[1, 2].set_title(r'Predicted large scales $\overline{y}_p$')
 
         axs[2, 0].loglog(kX, sX, color='blue', label='Feature $X$')
         axs[2, 0].loglog(ky, sy, color='green', label='Target $y$')
@@ -168,13 +168,13 @@ def plot_results(args, model, train_losses, test_losses,
         aux = y - filtered_y
         aux = batch_to_numpy(aux, dataset)
         axs[2, 1].imshow(aux[-1], cmap=cmap)
-        title = 'Target small scales $y - \overline{y}$'
+        title = r'Target small scales $y - \overline{y}$'
         axs[2, 1].set_title(title)
 
         aux = y_pred - filtered_y_pred
         aux = batch_to_numpy(aux, dataset)
         axs[2, 2].imshow(aux[-1], cmap=cmap)
-        axs[2, 2].set_title('Predicted small scales $y_p - \overline{y}_p$')
+        axs[2, 2].set_title(r'Predicted small scales $y_p - \overline{y}_p$')
 
         for iax, ax in enumerate(axs.ravel()):
             if iax != 3 and iax != 6:
@@ -487,7 +487,7 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                 yp = yp.to('cpu').numpy()
                 
                 if var == 'Target':
-                    label = f'$r = {step}~\Delta x$'
+                    label = rf'$r = {step}~\Delta x$'
                 else:
                     label = None
                    
@@ -504,8 +504,8 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
             hist_steps.append(step)
                 
     plt.title('Longitudinal velocity increment PDFs')
-    plt.ylabel('$\sigma_{\delta u_L} P(\delta u_L)$')
-    plt.xlabel('$\delta u_L / \sigma_{\delta u_L}$')
+    plt.ylabel(r'$\sigma_{\delta u_L} P(\delta u_L)$')
+    plt.xlabel(r'$\delta u_L / \sigma_{\delta u_L}$')
     xp = np.linspace(-6.0, 6.0, args.n)
     gauss_x = xp
     gauss_y = 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2)
@@ -526,24 +526,24 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
                          label='Prediction $y_p$')
         k_LES_cutoff = args.alpha * np.max(kX)
         axs[0].axvline(x=k_LES_cutoff, color='red',
-                          linestyle='--', label='LES filter cutoff $2 \pi / \Delta$')
+                          linestyle='--', label=r'LES filter cutoff $2 \pi / \Delta$')
         k_DNS_cutoff = np.sqrt(2.0) / 3.0 * np.max(kX)
         axs[0].axvline(x=k_DNS_cutoff, color='orange',
-                        linestyle='--', label='DNS resolution cutoff $\simeq 2 \pi / \eta$')
+                        linestyle='--', label=r'DNS resolution cutoff $\simeq 2 \pi / \eta$')
         axs[0].axvline(x=hist_wv, color='purple',
-                          linestyle='--', label='increment wavenumber $ 2 \pi / r$')
+                          linestyle='--', label=r'increment wavenumber $ 2 \pi / r$')
         axs[0].set_ylabel('$E(k)$')
         axs[0].set_xlabel('Wavenumber $k$')
         axs[0].legend(loc='best')
         axs[0].set_title('Energy spectra')
 
         axs[1].set_yscale('log')
-        axs[1].plot(hist_x, hist_y, color='purple', label = f'$P(\delta u_L(r)), r = {hist_step}~\Delta x$')
+        axs[1].plot(hist_x, hist_y, color='purple', label = rf'$P(\delta u_L(r)), r = {hist_step}~\Delta x$')
         axs[1].plot(hist_x_pred, hist_y_pred, '--', color='purple', label = 'Prediction')
         axs[1].plot(gauss_x, gauss_y, '.', color='black', label = 'Gaussian distribution')
-        axs[1].set_title(f'Longitudinal velocity increment PDFs, $r = {hist_step}~\Delta x$')
-        axs[1].set_ylabel('$\sigma_{\delta u_L} P(\delta u_L)$')
-        axs[1].set_xlabel('$\delta u_L / \sigma_{\delta u_L}$')
+        axs[1].set_title(rf'Longitudinal velocity increment PDFs, $r = {hist_step}~\Delta x$')
+        axs[1].set_ylabel(r'$\sigma_{\delta u_L} P(\delta u_L)$')
+        axs[1].set_xlabel(r'$\delta u_L / \sigma_{\delta u_L}$')
         axs[1].legend(loc='best')
         plt.savefig(os.path.join(args.out, f'hist_vel_incr_{iplot:03d}.png'))
     
@@ -560,8 +560,8 @@ def plot_histograms(dataloader, model, dataset, scaler, args):
         yp = yp.to('cpu').numpy()
         plt.plot(xp / std, yp * std , style, color='black', label=label)
         plt.title('Velocity gradient PDFs')
-        plt.ylabel('$\sigma P(\partial u / \partial x)$')
-        plt.xlabel('$(\partial u / \partial x)/\sigma$')
+        plt.ylabel(r'$\sigma P(\partial u / \partial x)$')
+        plt.xlabel(r'$(\partial u / \partial x)/\sigma$')
     
     xp = np.linspace(-6.0, 6.0, args.n)
     plt.plot(xp, 1. / np.sqrt(2 * np.pi) * np.exp(-0.5 * xp ** 2),
