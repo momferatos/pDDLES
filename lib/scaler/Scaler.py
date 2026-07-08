@@ -397,12 +397,15 @@ class DummyScaler(object):
 
 def get_scaler(dataloader, args):
 
-    # === Get Dataset === #
-    if args.scaler == 'norm':
-        scaler = NormScaler(dataloader, args)
-    elif args.scaler == 'minmax':
-        scaler = MinmaxScaler(dataloader, args)
-    elif args.scaler == 'none':
-        scaler = DummyScaler(dataloader, args)
+    scalers = {
+        'norm': NormScaler,
+        'minmax': MinmaxScaler,
+        'none': DummyScaler,
+    }
+    if args.scaler not in scalers:
+        # was UnboundLocalError on 'scaler' for an unknown name
+        raise ValueError(
+            "Unknown scaler '{}'; choose from {}".format(
+                args.scaler, sorted(scalers)))
 
-    return scaler
+    return scalers[args.scaler](dataloader, args)
