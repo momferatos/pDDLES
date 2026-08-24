@@ -159,10 +159,10 @@ class ScalarWaveletBlock(nn.Module):
         # create a sample input
         if args.dimensions == 2:        
             X = torch.rand((1, self.n, self.n),
-                           dtype=torch.float32)
+                           dtype=args.torch_dtype)
         else:
             X = torch.rand((1, self.n, self.n, self.n),
-                           dtype=torch.float32)
+                           dtype=args.torch_dtype)
 
         # forward discrete wavelet transform
         if args.dimensions == 2:
@@ -180,12 +180,12 @@ class ScalarWaveletBlock(nn.Module):
                 for wavecoeff_key in wavecoeff.keys():
                     if self.mode == 'all':
                         tmp = torch.rand_like(wavecoeff[wavecoeff_key],
-                                              dtype=torch.float32)
+                                              dtype=args.torch_dtype)
                     elif self.mode == 'one':
-                        tmp = torch.rand(1, dtype=torch.float32)
+                        tmp = torch.rand(1, dtype=args.torch_dtype)
                     elif self.mode == 'outer':
                         tmp = torch.rand(wavecoeff[wavecoeff_key].shape[-1],
-                                         dtype=torch.float32)
+                                         dtype=args.torch_dtype)
                     params_dict[wavecoeff_key] = nn.Parameter(
                         tmp, requires_grad=True)
                     nn.init.uniform_(params_dict[wavecoeff_key])
@@ -195,11 +195,11 @@ class ScalarWaveletBlock(nn.Module):
                 for wv in wavecoeff:
                     if self.mode == 'all':
                         tmp = torch.rand_like(wv,
-                                              dtype=torch.float32)
+                                              dtype=args.torch_dtype)
                     elif self.mode == 'one':
-                        tmp = torch.rand(1, dtype=torch.float32)
+                        tmp = torch.rand(1, dtype=args.torch_dtype)
                     elif self.mode == 'outer':
-                        tmp = torch.rand(wv.shape[-1], dtype=torch.float32)
+                        tmp = torch.rand(wv.shape[-1], dtype=args.torch_dtype)
                     params_tmp = nn.Parameter(tmp, requires_grad=True)
                     nn.init.uniform_(params_tmp)
                     params_tuple.append(params_tmp)

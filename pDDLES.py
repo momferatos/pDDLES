@@ -76,6 +76,9 @@ def main() -> None:
 
     args.output_dir = get_shared_folder(args) / f'{args.model}'
     args.out = args.output_dir
+    args.numpy_dtype = (np.float32 if args.precision == 'single' else np.float64)
+    args.torch_dtype = (torch.float32 if args.precision == 'single' else torch.float64)
+
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     
@@ -131,7 +134,7 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
 
     print(f'Local rank {args.gpu} is using device {args.device}')
     
-    # === DATA === #
+    # dataset loader #
     get_dataset = getattr(__import__("lib.datasets.{}".format(args.dataset),
                                      fromlist=["get_dataset"]), "get_dataset")
     
@@ -141,10 +144,10 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
 
     args.h5path = os.path.dirname(os.path.realpath(filenames[-1]))
     
-    # detrmine the size of the DNS square/cube, N
+    # determine the size of the DNS square/cube, N
     with h5py.File(filenames[0], 'r') as h5file:
         keys = h5file.keys()
-        y = np.array(h5file[args.hdf5_key], dtype='float32')
+        y = np.array(h5file[args.hdf5_key], dtype=args.numpy_dtype)
         args.n = y.shape[0]
 
     if args.wavelet == 'list':
@@ -198,11 +201,17 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
                                 seed=31,
                                 drop_last=args.drop_last)
     test_sampler = TurbSampler(test_dataset,
-                               shuffle=args.shuffle,
+                               shuffle=False,
                                num_replicas=args.world_size,
                                rank=args.rank,
                                seed=31,
                                drop_last=args.drop_last)
+    valid_sampler = TurbSampler(valid_dataset,
+                                   shuffle=False,
+                                   num_replicas=args.world_size,
+                                   rank=args.rank,
+                                   seed=31,
+                                   drop_last=False)
 
 
     train_loader = DataLoader(dataset=train_dataset, 
@@ -217,20 +226,23 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
                             batch_size=args.batch_per_task, 
                             num_workers=args.workers,
                             pin_memory=True,
-                            drop_last=args.drop_last)
+                            drop_last=False,
+                            shuffle=False)
 
     valid_loader = DataLoader(dataset=valid_dataset,
+                                sampler=valid_sampler,
                                 batch_size=args.batch_per_task,
                                 num_workers=args.workers,
                                 pin_memory=True,
-                                drop_last=args.drop_last,
+                                drop_last=False,
                                 shuffle=False)
 
     scaler_loader = DataLoader(dataset=train_dataset,
+                                sampler=False,
                                 batch_size=args.batch_per_task,
                                 num_workers=args.workers,
                                 pin_memory=True,
-                                drop_last=args.drop_last,
+                                drop_last=False,
                                 shuffle=False)
 
     print(f"Data loaded")

@@ -80,7 +80,7 @@ class FourierBlock(nn.Module):
         
         # Create learnable spectral multiplication coefficients
         self.alpha = torch.rand(args.num_coeffs,
-                                dtype=torch.float32)
+                                dtype=args.torch_dtype)
         self.alpha = nn.Parameter(self.alpha, requires_grad=True)
         nn.init.uniform_(self.alpha)
 

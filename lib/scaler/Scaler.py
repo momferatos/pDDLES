@@ -66,6 +66,8 @@ class NormScaler(object):
 
         self.device = args.device
 
+        self.args = args
+
         return
 
     def fit(self) -> None:
@@ -120,10 +122,10 @@ class NormScaler(object):
         X_std = torch.sqrt(X_std / fac)
         y_std = torch.sqrt(y_std / fac)
 
-        self.X_mean = X_mean.to(torch.float32).to(self.device)
-        self.X_std = X_std.to(torch.float32).to(self.device)
-        self.y_mean = y_mean.to(torch.float32).to(self.device)
-        self.y_std = y_std.to(torch.float32).to(self.device)
+        self.X_mean = X_mean.to(self.args.torch_dtype).to(self.device)
+        self.X_std = X_std.to(self.args.torch_dtype).to(self.device)
+        self.y_mean = y_mean.to(self.args.torch_dtype).to(self.device)
+        self.y_std = y_std.to(self.args.torch_dtype).to(self.device)
 
         
         return
@@ -190,10 +192,10 @@ class NormScaler(object):
                   'refitting.')
             return
 
-        self.X_mean = tens['vals'][0].to(torch.float32).to(self.device)
-        self.X_std = tens['vals'][1].to(torch.float32).to(self.device)
-        self.y_mean = tens['vals'][2].to(torch.float32).to(self.device)
-        self.y_std = tens['vals'][3].to(torch.float32).to(self.device)
+        self.X_mean = tens['vals'][0].to(self.args.torch_dtype).to(self.device)
+        self.X_std = tens['vals'][1].to(self.args.torch_dtype).to(self.device)
+        self.y_mean = tens['vals'][2].to(self.args.torch_dtype).to(self.device)
+        self.y_std = tens['vals'][3].to(self.args.torch_dtype).to(self.device)
 
         return 1
                        
@@ -224,6 +226,8 @@ class MinmaxScaler(object):
         self.y_min = 0.0
 
         self.device = args.device
+
+        self.args = args
 
         return
 

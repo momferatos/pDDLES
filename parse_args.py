@@ -298,6 +298,11 @@ def parse_args() -> tuple[argparse.Namespace, argparse.ArgumentParser]:
                         help='Wavelet coefficient multiplication mode',
                         default='outer',
                         type=str)
+    
+    parser.add_argument('-precision',
+                        help='Numerical precision: single or double',
+                        default='single',
+                        type=str)
 
     args = parser.parse_args()
 
