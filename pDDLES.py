@@ -252,7 +252,7 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
                                 shuffle=False)
 
     scaler_loader = DataLoader(dataset=train_dataset,
-                                sampler=False,
+                                sampler=None,
                                 batch_size=args.batch_per_task,
                                 num_workers=args.workers,
                                 pin_memory=True,
