@@ -220,15 +220,9 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
                                rank=args.rank,
                                seed=31,
                                drop_last=args.drop_last)
-    valid_sampler = TurbSampler(valid_dataset,
-                                   shuffle=False,
-                                   num_replicas=args.world_size,
-                                   rank=args.rank,
-                                   seed=31,
-                                   drop_last=False)
 
 
-    train_loader = DataLoader(dataset=train_dataset, 
+    train_loader = DataLoader(dataset=train_dataset,
                             sampler=train_sampler,
                             batch_size=args.batch_per_task, 
                             num_workers= args.workers,
@@ -243,8 +237,12 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
                             drop_last=False,
                             shuffle=False)
 
+    # sampler-less: TurbDataset.__len__ is the true file count, so this walks
+    # the whole validation set on every rank. The per-rank validation loss is
+    # still all-reduced to the same full-set mean, and rank 0 (which does the
+    # plotting) now sees all validation files instead of a 1/world_size shard.
     valid_loader = DataLoader(dataset=valid_dataset,
-                                sampler=valid_sampler,
+                                sampler=None,
                                 batch_size=args.batch_per_task,
                                 num_workers=args.workers,
                                 pin_memory=True,
