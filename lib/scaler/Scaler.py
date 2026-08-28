@@ -22,36 +22,11 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-import os
-import hashlib
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from lib.datasets.TurbDataset import get_helper
 
-
-def _cache_key(args: argparse.Namespace,
-               filenames: list[str]) -> dict[str, Any]:
-    """Fingerprint of everything the cached scaler constants depend on.
-
-    The constants are statistics of the LES-filtered training files, so the
-    cache must be invalidated when the file list, the filter cutoff, the
-    resolution, or the field changes - not just the split seed. Basenames
-    (not full paths) so moving the data directory keeps a valid cache.
-    """
-    names = '\n'.join(os.path.basename(fn) for fn in filenames)
-    return {'seed': int(args.seed),
-            'alpha': float(args.alpha),
-            'n': int(args.n),
-            'hdf5_key': str(args.hdf5_key),
-            'files': hashlib.sha256(names.encode()).hexdigest()}
-
-
-def _atomic_save(obj: Any, fname: str) -> None:
-    """Write-then-rename so a concurrent reader never sees a partial file."""
-    tmp = f'{fname}.tmp.{os.getpid()}'
-    torch.save(obj, tmp)
-    os.replace(tmp, fname)
 
 class NormScaler(object):
     """Datalolader scaler
@@ -185,33 +160,16 @@ class NormScaler(object):
         return X_tr, y_tr
 
     
-    def store(self, args: argparse.Namespace) -> None:
-        fname = os.path.join(args.h5path, 'norm.pt')
-        tens = {'key': _cache_key(args, self.dataloader.dataset.filenames),
-                'vals': torch.stack([self.X_mean, self.X_std,
-                                     self.y_mean, self.y_std])}
-        _atomic_save(tens, fname)
+    def state_dict(self) -> dict[str, Any]:
+        """Normalization constants, for embedding in the model checkpoint."""
+        return {'X_mean': self.X_mean, 'X_std': self.X_std,
+                'y_mean': self.y_mean, 'y_std': self.y_std}
 
-        return
-
-    def load(self, args: argparse.Namespace) -> int | None:
-        fname = os.path.join(args.h5path, 'norm.pt')
-        if not os.path.isfile(fname):
-            return
-        tens = torch.load(fname)
-        # a mismatch also rejects pre-fingerprint cache files ('key' absent)
-        if tens.get('key') != _cache_key(args,
-                                         self.dataloader.dataset.filenames):
-            print('Scaler cache is stale (data/filter settings changed); '
-                  'refitting.')
-            return
-
-        self.X_mean = tens['vals'][0].to(self.args.torch_dtype).to(self.device)
-        self.X_std = tens['vals'][1].to(self.args.torch_dtype).to(self.device)
-        self.y_mean = tens['vals'][2].to(self.args.torch_dtype).to(self.device)
-        self.y_std = tens['vals'][3].to(self.args.torch_dtype).to(self.device)
-
-        return 1
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        self.X_mean = state['X_mean'].to(self.args.torch_dtype).to(self.device)
+        self.X_std = state['X_std'].to(self.args.torch_dtype).to(self.device)
+        self.y_mean = state['y_mean'].to(self.args.torch_dtype).to(self.device)
+        self.y_std = state['y_std'].to(self.args.torch_dtype).to(self.device)
                        
 class MinmaxScaler(object):
     """Datalolader scaler
@@ -332,33 +290,16 @@ class MinmaxScaler(object):
         return X_tr, y_tr
 
 
-    def store(self, args: argparse.Namespace) -> None:
-        fname = os.path.join(args.h5path, 'minmax.pt')
-        tens = {'key': _cache_key(args, self.dataloader.dataset.filenames),
-                'vals': torch.tensor([float(self.X_min), float(self.X_max),
-                                      float(self.y_min), float(self.y_max)])}
-        _atomic_save(tens, fname)
+    def state_dict(self) -> dict[str, Any]:
+        """Normalization constants, for embedding in the model checkpoint."""
+        return {'X_min': self.X_min, 'X_max': self.X_max,
+                'y_min': self.y_min, 'y_max': self.y_max}
 
-        return
-
-    def load(self, args: argparse.Namespace) -> int | None:
-        fname = os.path.join(args.h5path, 'minmax.pt')
-        if not os.path.isfile(fname):
-            return
-        tens = torch.load(fname)
-        # a mismatch also rejects pre-fingerprint cache files ('key' absent)
-        if tens.get('key') != _cache_key(args,
-                                         self.dataloader.dataset.filenames):
-            print('Scaler cache is stale (data/filter settings changed); '
-                  'refitting.')
-            return
-
-        self.X_min = tens['vals'][0].to(self.device)
-        self.X_max = tens['vals'][1].to(self.device)
-        self.y_min = tens['vals'][2].to(self.device)
-        self.y_max = tens['vals'][3].to(self.device)
-
-        return 1
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        self.X_min = torch.as_tensor(state['X_min']).to(self.device)
+        self.X_max = torch.as_tensor(state['X_max']).to(self.device)
+        self.y_min = torch.as_tensor(state['y_min']).to(self.device)
+        self.y_max = torch.as_tensor(state['y_max']).to(self.device)
 
 
 class DummyScaler(object):
@@ -419,10 +360,10 @@ class DummyScaler(object):
 
         return X, y
 
-    def store(self, args: argparse.Namespace) -> None:
-        return
+    def state_dict(self) -> dict[str, Any]:
+        return {}
 
-    def load(self, args: argparse.Namespace) -> int | None:
+    def load_state_dict(self, state: dict[str, Any]) -> None:
         return
 
 

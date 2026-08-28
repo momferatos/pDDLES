@@ -156,8 +156,6 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
     with open(args.datafile, 'r') as f:
         filenames = [os.path.abspath(fn.strip()) for fn in list(f)]
 
-    args.h5path = os.path.dirname(os.path.realpath(filenames[-1]))
-    
     # determine the size of the DNS square/cube, N
     with h5py.File(filenames[0], 'r') as h5file:
         keys = h5file.keys()
@@ -315,17 +313,11 @@ def train(gpu: int | None, args: argparse.Namespace) -> None:
     optimizer = get_optimizer(model, args)
 
     scaler = get_scaler(scaler_loader, args)
-    
-    if not scaler.load(args):
-        scaler.fit()
-    else:
-        print('Scaler values loaded from file.')
-    if args.main:
-        # every rank fits identical constants over the same full loader, so
-        # a single writer suffices - and they would otherwise all race on
-        # the same file in the shared data directory
-        scaler.store(args)
-    
+    # Normalization constants are handled by the trainer: load_if_available()
+    # fits them on a fresh run or restores them from the checkpoint on resume,
+    # and Trainer.save() writes them into every checkpoint (no separate
+    # norm.pt file).
+
     # === TRAINING === #
     Trainer = getattr(__import__("lib.trainers.{}".format(args.trainer),
                                  fromlist=["Trainer"]), "Trainer")

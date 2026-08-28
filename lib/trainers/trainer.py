@@ -363,28 +363,34 @@ class Trainer:
             self.optimizer.load_state_dict(ckpt['optimizer'])
             if self.args.fp16: self.fp16_scaler.load_state_dict(
                     ckpt['fp16_scaler'])
-            print("Loaded ckpt: ", ckpts[-1])
+            if 'scaler' in ckpt:
+                # normalization constants travel inside the checkpoint
+                self.scaler.load_state_dict(ckpt['scaler'])
+                print("Loaded ckpt: ", ckpts[-1])
+            else:
+                # checkpoint predates embedded scaler constants: refit them
+                print("Loaded ckpt (no scaler state), refitting scaler:",
+                      ckpts[-1])
+                self.scaler.fit()
 
         else:
             self.start_epoch = 0
-            print("Starting from scratch")
+            print("Starting from scratch; fitting scaler")
+            self.scaler.fit()
 
 
     def save(self, epoch: int) -> None:
 
+        # normalization constants ride in the checkpoint (self.scaler.state_dict)
+        # instead of a separate norm.pt file
+        state = dict(epoch=epoch+1,
+                        model=self.model.module.state_dict(),
+                        optimizer=self.optimizer.state_dict(),
+                        scaler=self.scaler.state_dict(),
+                        args = self.args
+                    )
         if self.args.fp16:
-            state = dict(epoch=epoch+1, 
-                            model=self.model.module.state_dict(), 
-                            optimizer=self.optimizer.state_dict(), 
-                            fp16_scaler = self.fp16_scaler.state_dict(),
-                            args = self.args
-                        )
-        else:
-            state = dict(epoch=epoch+1,
-                            model=self.model.module.state_dict(),
-                            optimizer=self.optimizer.state_dict(),
-                            args = self.args
-                        )
+            state['fp16_scaler'] = self.fp16_scaler.state_dict()
 
         torch.save(state,
                    "{}/weights/{}/Epoch_{}.pth".format(self.args.out,
