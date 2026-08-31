@@ -283,6 +283,24 @@ class Trainer:
             if self.args.main and epoch%self.args.save_every == 0:
                 self.save(epoch)
 
+            # === per-epoch plots === #
+            # rank 0 only, on the unwrapped module (a DDP forward here would
+            # broadcast BatchNorm buffers, a collective the other ranks never
+            # join), in eval mode so plotting a validation batch does not
+            # update the BatchNorm running stats. Filenames are tagged with the
+            # epoch. The barrier resyncs every rank before the next epoch's
+            # collective train_one_epoch.
+            if self.args.main:
+                from lib.post_process.post_process import plot_results
+                self.model.eval()
+                plot_results(self.args, self.model.module,
+                             self.train_losses, self.test_losses,
+                             self.dataset, self.val_gen, self.scaler,
+                             epoch=epoch)
+                self.model.train()
+            if is_dist_avail_and_initialized():
+                dist.barrier()
+
         print('Calculating validation loss...')
         with torch.no_grad():
             val_div = 0.0

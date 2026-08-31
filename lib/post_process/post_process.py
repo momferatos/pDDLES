@@ -39,8 +39,8 @@ from lib.datasets.TurbDataset import TurbDataset
 def plot_results(args: argparse.Namespace, model: nn.Module,
                  train_losses: list[float], test_losses: list[float],
                  dataset: TurbDataset, dataloader: DataLoader,
-                 scaler: Any) -> None:
-    
+                 scaler: Any, epoch: int | None = None) -> None:
+
     """Plot results
 
     Parameters
@@ -68,7 +68,12 @@ def plot_results(args: argparse.Namespace, model: nn.Module,
     None
 
     """
-    
+
+    # per-epoch calls (epoch not None) tag every output filename with the
+    # epoch number so the snapshots are kept instead of overwritten; the
+    # end-of-run call (epoch None) keeps the canonical untagged names.
+    suffix = '' if epoch is None else f'_{epoch:03d}'
+
     # load colormap for visualization
     script_path = os.path.join(*(os.path.split(
         os.path.realpath(__file__))[:-1]))
@@ -119,7 +124,7 @@ def plot_results(args: argparse.Namespace, model: nn.Module,
         plt.ylabel('MSE loss')
         plt.title('Training/Test losses')
         plt.legend(loc='best')
-        plt.savefig(os.path.join(args.out, 'losses.png'))
+        plt.savefig(os.path.join(args.out, f'losses{suffix}.png'))
 
         fig = plt.figure(figsize=(12.5, 7.5))
         plt.loglog(kX, sX, color='blue', label='Feature $X$')
@@ -136,7 +141,7 @@ def plot_results(args: argparse.Namespace, model: nn.Module,
         plt.xlabel('Wavenumber $k$')
         plt.legend(loc='best')
         plt.title('Energy spectra')
-        plt.savefig(os.path.join(args.out, 'spectra.png'))
+        plt.savefig(os.path.join(args.out, f'spectra{suffix}.png'))
         
         fig, axs = plt.subplots(3, 3, figsize=(15, 15))
         
@@ -205,10 +210,10 @@ def plot_results(args: argparse.Namespace, model: nn.Module,
     plt.tight_layout()
     
     #plt.show()
-    plt.savefig(os.path.join(args.out, f'{args.model}.png'))
+    plt.savefig(os.path.join(args.out, f'{args.model}{suffix}.png'))
 
     if args.rank == 0:
-        h5_filename = f'{args.model}.h5'
+        h5_filename = f'{args.model}{suffix}.h5'
         filename = os.path.join(args.out, h5_filename)
         with h5py.File(filename, 'w') as h5file:
             aux = batch_to_numpy(y, dataset)
