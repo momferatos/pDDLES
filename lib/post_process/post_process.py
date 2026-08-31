@@ -211,7 +211,8 @@ def plot_results(args: argparse.Namespace, model: nn.Module,
     
     #plt.show()
     plt.savefig(os.path.join(args.out, f'{args.model}{suffix}.png'))
-
+    plt.close()
+    
     if args.rank == 0:
         h5_filename = f'{args.model}{suffix}.h5'
         filename = os.path.join(args.out, h5_filename)
