@@ -22,13 +22,90 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+import os
+import hashlib
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from lib.datasets.TurbDataset import get_helper
 
 
-class NormScaler(object):
+def _cache_key(args: argparse.Namespace,
+               filenames: list[str]) -> dict[str, Any]:
+    """Fingerprint of everything the fitted scaler constants depend on.
+
+    The constants are statistics of the LES-filtered training files, so the
+    cache is invalidated when the file list, the filter cutoff, the
+    resolution, the field, or the scaler type changes - not just the split
+    seed. Basenames (not full paths) so moving the data directory keeps a
+    valid cache.
+    """
+    names = '\n'.join(os.path.basename(fn) for fn in filenames)
+    return {'seed': int(args.seed),
+            'alpha': float(args.alpha),
+            'n': int(args.n),
+            'hdf5_key': str(args.hdf5_key),
+            'scaler': str(args.scaler),
+            'files': hashlib.sha256(names.encode()).hexdigest()}
+
+
+def _atomic_save(obj: Any, fname: str) -> None:
+    """Write-then-rename so a concurrent reader never sees a partial file."""
+    tmp = f'{fname}.tmp.{os.getpid()}'
+    torch.save(obj, tmp)
+    os.replace(tmp, fname)
+
+
+class _FileCachedScaler(object):
+    """Persist fitted constants to a file in the training data directory.
+
+    Used only for fresh starts: fitting scans the whole training set, so the
+    result is cached next to the data (keyed on _cache_key) and reused by
+    later fresh runs with the same data/settings. Resumed runs ignore this
+    and restore from the checkpoint instead (see Trainer.load_if_available).
+    Subclasses provide state_dict()/load_state_dict().
+    """
+
+    def _cache_path(self) -> str | None:
+        filenames = self.dataloader.dataset.filenames
+        if not filenames:
+            return None
+        datadir = os.path.dirname(os.path.realpath(filenames[-1]))
+        return os.path.join(datadir, f'scaler_{self.args.scaler}.pt')
+
+    def cache_load(self, args: argparse.Namespace) -> bool:
+        """Restore constants from the data-directory cache if it is valid."""
+        path = self._cache_path()
+        if path is None or not os.path.isfile(path):
+            return False
+        try:
+            blob = torch.load(path, weights_only=False)
+            if blob.get('key') != _cache_key(
+                    args, self.dataloader.dataset.filenames):
+                print('Scaler cache is stale (data/filter settings changed); '
+                      'refitting.')
+                return False
+            self.load_state_dict(blob['state'])
+        except Exception as e:
+            print(f'Ignoring unreadable scaler cache {path}: {e}')
+            return False
+        print(f'Loaded scaler constants from {path}')
+        return True
+
+    def cache_store(self, args: argparse.Namespace) -> None:
+        """Write the fitted constants to the data-directory cache (rank 0)."""
+        path = self._cache_path()
+        if path is None:
+            return
+        state = {k: torch.as_tensor(v).detach().cpu()
+                 for k, v in self.state_dict().items()}
+        _atomic_save(
+            {'key': _cache_key(args, self.dataloader.dataset.filenames),
+             'state': state}, path)
+
+
+class NormScaler(_FileCachedScaler):
     """Datalolader scaler
        
 
@@ -171,7 +248,7 @@ class NormScaler(object):
         self.y_mean = state['y_mean'].to(self.args.torch_dtype).to(self.device)
         self.y_std = state['y_std'].to(self.args.torch_dtype).to(self.device)
                        
-class MinmaxScaler(object):
+class MinmaxScaler(_FileCachedScaler):
     """Datalolader scaler
        
 
@@ -364,6 +441,13 @@ class DummyScaler(object):
         return {}
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
+        return
+
+    def cache_load(self, args: argparse.Namespace) -> bool:
+        # nothing to fit or cache for the identity scaler
+        return True
+
+    def cache_store(self, args: argparse.Namespace) -> None:
         return
 
 

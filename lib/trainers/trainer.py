@@ -393,8 +393,15 @@ class Trainer:
 
         else:
             self.start_epoch = 0
-            print("Starting from scratch; fitting scaler")
-            self.scaler.fit()
+            print("Starting from scratch")
+            # fresh start: reuse the data-directory scaler cache if present and
+            # valid, else fit and (rank 0) write it for future fresh runs. The
+            # constants are embedded in every checkpoint by save() regardless,
+            # so resumed runs restore from the checkpoint, not this cache.
+            if not self.scaler.cache_load(self.args):
+                self.scaler.fit()
+                if self.args.main:
+                    self.scaler.cache_store(self.args)
 
 
     def save(self, epoch: int) -> None:
