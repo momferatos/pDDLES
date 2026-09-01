@@ -291,6 +291,7 @@ class Trainer:
             # epoch. The barrier resyncs every rank before the next epoch's
             # collective train_one_epoch.
             if self.args.main:
+                import matplotlib.pyplot as plt
                 from lib.post_process.post_process import plot_results
                 self.model.eval()
                 plot_results(self.args, self.model.module,
@@ -298,6 +299,10 @@ class Trainer:
                              self.dataset, self.val_gen, self.scaler,
                              epoch=epoch)
                 self.model.train()
+                # release every figure plot_results opened this epoch;
+                # otherwise they accumulate across epochs (memory + the
+                # "More than 20 figures have been opened" warning)
+                plt.close('all')
             if is_dist_avail_and_initialized():
                 dist.barrier()
 
