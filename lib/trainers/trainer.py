@@ -95,6 +95,16 @@ class Trainer:
         dist.all_reduce(t, op=dist.ReduceOp.MAX)
         return t.item()
 
+    def _autocast(self) -> torch.amp.autocast:
+        """Autocast context for the current device, gated on -fp16.
+
+        Both branches are opt-in: an unconditional CPU autocast runs the
+        forward pass in bfloat16, which ptwt's wavedec/waverec reject
+        ("Input dtype torch.bfloat16 not supported").
+        """
+        device_type = 'cuda' if self.args.dev == 'gpu' else 'cpu'
+        return torch.amp.autocast(device_type, enabled=self.args.fp16)
+
     def _stop_if_nonfinite(self, value: float, what: str) -> None:
         """Collectively stop every rank if any rank's loss is non-finite.
 
@@ -134,12 +144,9 @@ class Trainer:
             # === Inputs === #
             if args.dev == 'gpu':
                 input_data = input_data.cuda(non_blocking=True)
-                autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
-            else:
-                autocast = torch.autocast(device_type='cpu')
-                
+
             # === Forward pass === #
-            with autocast:
+            with self._autocast():
                 y = input_data.to(self.device)
                                 
                 X = self.dataset.LES_filter(y)
@@ -209,12 +216,9 @@ class Trainer:
 
                 if args.dev == 'gpu':
                     input_data = input_data.cuda(non_blocking=True)
-                    autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
-                else:
-                    autocast = torch.autocast(device_type='cpu')
-                    
+
                 # === Forward pass === #
-                with autocast:
+                with self._autocast():
                     y = input_data.to(self.device)
                     
                     X = self.dataset.LES_filter(y)
@@ -322,12 +326,9 @@ class Trainer:
 
                 if self.args.dev == 'gpu':
                     input_data = input_data.cuda(non_blocking=True)
-                    autocast = torch.amp.autocast('cuda', enabled=self.args.fp16)
-                else:
-                    autocast = torch.autocast(device_type='cpu')
-                    
+
                 # === Forward pass === #
-                with autocast:
+                with self._autocast():
                     y = input_data.to(self.device)
                     
                     X = self.dataset.LES_filter(y)
