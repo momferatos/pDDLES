@@ -91,7 +91,8 @@ class FourierBlock(nn.Module):
         self.args = args
         self.actfun = self.args.actfun # select activation function
         self.dataset = get_helper(self.args)
-        
+        self.linear = nn.Linear(1, 1, bias=False) # fully-connected layer for scaling
+
         # Create learnable spectral multiplication coefficients
         self.alpha = torch.rand(args.num_coeffs,
                                 dtype=args.torch_dtype)
@@ -149,7 +150,14 @@ class FourierBlock(nn.Module):
 
         if not self.args.noskip:
             out = out + x
-            
+
+        # the block stays in the Fourier domain, so the real-weighted linear
+        # is applied to the real and imaginary parts alike
+        dims = out.shape
+        out = torch.view_as_real(out).reshape(-1, 1)
+        out = self.linear(out)
+        out = torch.view_as_complex(out.view(-1, 2)).view(dims)
+
         return out
 
 def get_model(args: argparse.Namespace) -> FNet:
