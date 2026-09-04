@@ -196,6 +196,11 @@ def parse_args() -> tuple[argparse.Namespace, argparse.ArgumentParser]:
                         help='Warmup epochs for learning rate (cosine/warmup '
                         'schedulers only; ignored by constant)')
 
+    parser.add_argument('-weight_decay',
+                        type=float,
+                        default=0.0,
+                        help='Weight decay for optimizer (default: 0.0)')
+
     # === SLURM === #
     parser.add_argument('-slurm',
                         action='store_true',

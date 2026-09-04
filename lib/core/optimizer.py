@@ -34,4 +34,6 @@ def get_optimizer(model: nn.Module, args: argparse.Namespace) -> Opt.Optimizer:
             "Unknown optimizer '{}'; choose from {}".format(
                 args.optimizer, sorted(opt_fns)))
 
-    return opt_fns[args.optimizer](model.parameters(), lr=args.lr_start)
+    return opt_fns[args.optimizer](model.parameters(), 
+                                   lr=args.lr_start,
+                                   weight_decay=args.weight_decay)
