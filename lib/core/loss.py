@@ -18,7 +18,7 @@ import argparse
 
 import torch
 import torch.nn as nn
-from lib.datasets.TurbDataset import get_helper
+from lib.datasets.TurbDataset import get_helper, TurbDataset
 
 class Loss(nn.Module):
     def __init__(self, args: argparse.Namespace) -> None:
@@ -62,25 +62,22 @@ class SubgridLoss(nn.Module):
         return
 
     def forward(self, y_pred: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-
-        tens = self.dataset.subgrid_scale_tensor(y)
-        #tens = torch.einsum('bij...,bij...->b...', tens, tens).unsqueeze(1)
-
-        tens_pred = self.dataset.subgrid_scale_tensor(y_pred)
-        #tens_pred = torch.einsum('bij...,bij...->b...',
-        #                    tens_pred,
-        #                    tens_pred).unsqueeze(1)
-
-        # frob = torch.linalg.matrix_norm(tens, dim=(1, 2)).unsqueeze(1)
-        # frob_pred = torch.linalg.matrix_norm(tens_pred,
-        #                                      dim=(1, 2)).unsqueeze(1)
-
-        #loss = self.loss_fn(tens_pred, tens)
-        tens_pred = tens_pred.to(self.device)
-        tens = tens.to(self.device)
-
-        diffsq_tens = (tens_pred - tens) ** 2
-        return diffsq_tens.mean()
+        if self.args.loss == 'sgs_stress':
+            tens = self.dataset.subgrid_scale_tensor(y)
+            tens_pred = self.dataset.subgrid_scale_tensor(y_pred)
+            tens_pred = tens_pred.to(self.device)
+            tens = tens.to(self.device)
+            diffsq_tens = (tens_pred - tens) ** 2
+            return diffsq_tens.mean()
+        elif self.args.loss == 'sgs_vel':
+            ss_y_pred = y_pred - self.dataset.LES_filter(y_pred)
+            ss_y = y - self.dataset.LES_filter(y)
+            diffsq_ss = (ss_y_pred - ss_y) ** 2
+            return diffsq_ss.mean()
+        elif self.args.loss == 'vel':
+            return ((y_pred - y) ** 2).mean()
+        else:
+            raise ValueError(f"Unknown loss function: {self.args.loss}")
 
 def get_loss(args: argparse.Namespace) -> SubgridLoss:
 

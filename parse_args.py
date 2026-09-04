@@ -201,6 +201,11 @@ def parse_args() -> tuple[argparse.Namespace, argparse.ArgumentParser]:
                         default=0.0,
                         help='Weight decay for optimizer (default: 0.0)')
 
+    parser.add_argument('-loss',
+                        type=str,
+                        default='stress',
+                        help='Loss function to choose')
+
     # === SLURM === #
     parser.add_argument('-slurm',
                         action='store_true',
