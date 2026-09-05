@@ -34,6 +34,15 @@ def get_optimizer(model: nn.Module, args: argparse.Namespace) -> Opt.Optimizer:
             "Unknown optimizer '{}'; choose from {}".format(
                 args.optimizer, sorted(opt_fns)))
 
-    return opt_fns[args.optimizer](model.parameters(), 
-                                   lr=args.lr_start,
-                                   weight_decay=args.weight_decay)
+    optargs = {'lr': args.lr_start,
+                'weight_decay': args.weight_decay}
+    if args.optimizer == 'sgd' and args.momentum is not None:
+        optargs['momentum'] = args.momentum
+    if args.optim_options is not None:
+        # Parse the additional optimizer options from the string
+        additional_options = {}
+        for option in args.optim_options.split(','):
+            key, value = option.split('=')
+            additional_options[key.strip()] = eval(value.strip())
+        optargs.update(additional_options)
+    return opt_fns[args.optimizer](model.parameters(),**optargs)

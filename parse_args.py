@@ -206,6 +206,17 @@ def parse_args() -> tuple[argparse.Namespace, argparse.ArgumentParser]:
                         default='stress',
                         help='Loss function to choose')
 
+    parser.add_argument('-momentum',
+                        type=float,
+                        default=0.9,
+                        help='Momentum for SGD optimizer (default: 0.9)')
+    
+    parser.add_argument('-optim_options',
+                        type=str,
+                        default=None,
+                        help='Additional optimizer options as a string, '
+                        'e.g. "amsgrad=True" for Adam')
+
     # === SLURM === #
     parser.add_argument('-slurm',
                         action='store_true',
