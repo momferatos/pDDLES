@@ -373,7 +373,11 @@ class TurbDataset(Dataset):
 
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho')
+        # k is fp32, so under -fp16 autocast a half X gives a ComplexHalf
+        # spectrum and vecdot rejects the dtype mismatch. div is a logged
+        # diagnostic that is never backpropped, so promote X instead of
+        # demoting k to an experimental half-precision FFT.
+        fX = torch.fft.rfftn(X.to(k.dtype), dim=self.dims, norm='ortho')
         div = torch.linalg.vecdot(1j * k, torch.conj_physical(fX), dim=1)
         div = torch.fft.irfftn(div, dim=self.dims, norm='ortho')
         div = torch.mean(torch.abs(div))
@@ -401,7 +405,9 @@ class TurbDataset(Dataset):
         k = k.unsqueeze(0).expand(X.shape[0], -1, -1, -1, -1)
         dims = (-3, -2, -1)
         # forward real-to-half-complex FF
-        fX = torch.fft.rfftn(X, dim=self.dims, norm='ortho')
+        # promoted to k's dtype: cross, like vecdot above, needs both
+        # operands in the same dtype (see divergence)
+        fX = torch.fft.rfftn(X.to(k.dtype), dim=self.dims, norm='ortho')
         w = torch.cross(1j * k, fX, dim=1)
         w = torch.fft.irfftn(w, dim=self.dims, norm='ortho')
 
