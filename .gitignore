@@ -4,6 +4,15 @@ old/
 
 *.dat
 
+# Run outputs (-out directory; its name is arbitrary, so ignore by content)
+out/
+logs/
+weights/
+*.pth
+*.h5
+*.xmf
+*.png
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
